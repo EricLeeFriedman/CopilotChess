@@ -2,38 +2,19 @@
 
 This repository is organized for an **agent-first workflow**.
 
-Humans set direction, define constraints, and validate results. Agents are expected to do the design, implementation, review preparation, and pull request work inside the repository.
+Start here, then follow the linked documents. The always-on repository rules live in `.github\copilot-instructions.md`.
 
 ## Entry Points
 
 Read these files in order before making changes:
 
 1. `README.md`
-2. `docs\requirements.md`
-3. `docs\architecture.md`
-4. `docs\testing.md`
-5. `docs\workflow.md`
-6. `docs\build-and-runner.md`
-
-## Repository Rules
-
-- Treat repository-local documents as the source of truth.
-- Keep changes small and scoped to a single task or issue.
-- Update docs in the same change when requirements, architecture, or workflow assumptions change.
-- Do not add third-party libraries.
-- Do not introduce object-oriented boundaries. Prefer C-style module APIs and plain structs.
-- Avoid dynamic allocation during runtime. Favor startup allocation and dedicated arenas.
-- Preserve the Windows-only, Win32-based direction of the project.
-- Keep testing inside the application as a first-class mode of operation.
-
-## Product Constraints
-
-- The product is a chess game.
-- All pieces and legal moves must follow standard chess rules.
-- The game must surface check and checkmate to the user.
-- The game must be restartable after a win.
-- Input is local mouse-only click-and-drag.
-- Rendering is 2D software rendering through the Windows API.
+2. `.github\copilot-instructions.md`
+3. `docs\requirements.md`
+4. `docs\architecture.md`
+5. `docs\testing.md`
+6. `docs\workflow.md`
+7. `docs\build-and-runner.md`
 
 ## Expected Task Flow
 
@@ -49,6 +30,12 @@ Read these files in order before making changes:
 - Optimize for correctness, legibility, and deterministic behavior over cleverness.
 - Prefer explicit data flow and simple module boundaries over abstraction-heavy designs.
 - Encode important invariants in docs, scripts, and checks so future agents can discover them mechanically.
+
+## Document Roles
+
+- `AGENTS.md` is the map.
+- `.github\copilot-instructions.md` holds the always-on repository rules.
+- `docs\` holds deeper design, workflow, testing, and platform guidance.
 
 ## When Docs and Code Disagree
 

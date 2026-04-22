@@ -6,12 +6,13 @@ This repository intentionally starts with **no application code**. The first com
 
 ## Start Here
 
-1. `AGENTS.md` - entry point for human and agent contributors.
-2. `docs\requirements.md` - product and engineering constraints.
-3. `docs\architecture.md` - planned architectural boundaries for the eventual codebase.
-4. `docs\testing.md` - expectations for in-application testing.
-5. `docs\workflow.md` - task lifecycle for agent-driven work.
-6. `docs\build-and-runner.md` - Windows self-hosted runner and build expectations.
+1. `AGENTS.md` - entry point and document map for human and agent contributors.
+2. `.github\copilot-instructions.md` - always-on repository rules for Copilot.
+3. `docs\requirements.md` - product and engineering constraints.
+4. `docs\architecture.md` - planned architectural boundaries for the eventual codebase.
+5. `docs\testing.md` - expectations for in-application testing.
+6. `docs\workflow.md` - task lifecycle for agent-driven work.
+7. `docs\build-and-runner.md` - Windows self-hosted runner and build expectations.
 
 ## Current State
 
