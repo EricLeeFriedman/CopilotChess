@@ -7,7 +7,9 @@
 | `.github/workflows/build.yml` | `windows-latest` | push / pull_request to `main` | Compile with `build.ps1` and run `chess.exe --test` |
 | `.github/workflows/pr-review.yml` | `ubuntu-latest` | pull_request (opened, synchronize, reopened) | Adversarial LLM code review posted as a formal GitHub PR review |
 
-The `pr-review.yml` workflow uses the GitHub Models API (`gpt-4o`) with the built-in `GITHUB_TOKEN` — no external secrets are required. It loads `.github/copilot-instructions.md` and `AGENTS.md` as review context, then posts a request-changes / comment / approve review with inline comments on the PR.
+The `pr-review.yml` workflow uses the GitHub Models API (`gpt-4o`) with the built-in `GITHUB_TOKEN` — no external secrets are required. The `models: read` permission scope grants access to the Models API endpoint (`models.inference.ai.azure.com`). It loads `.github/copilot-instructions.md` and `AGENTS.md` as review context, then posts a request-changes / comment / approve review with inline comments on the PR.
+
+If the initial review post fails (e.g. the model emits line numbers that don't appear in the diff), the workflow retries automatically with the inline comments stripped, posting a body-only review instead. This fallback ensures a review is always posted even if line-level annotations are unavailable.
 
 **Runner exception:** `pr-review.yml` intentionally uses `ubuntu-latest` rather than `windows-latest`. The adversarial review is a pure API workflow — it does not compile or run the game — so the Windows toolchain is not needed. All workflows that build or test the game must still use `windows-latest`.
 

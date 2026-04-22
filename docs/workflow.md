@@ -21,6 +21,8 @@ This repository is designed so that work can move from intent to merged pull req
 ## Review Expectations
 
 - Every pull request receives an automated adversarial review from the `pr-review.yml` workflow before a human looks at it. The reviewer acts as a skeptical expert, checking for bugs, constraint violations, and missing doc updates. It posts a formal GitHub PR review (request-changes / comment / approve) with inline comments where possible.
+- The automated review caps diffs at 12 000 characters to stay within model token limits. For large PRs the reviewer may see only the first portion of the diff; contributors should note this in the PR description when a PR is unusually large.
+- All automated review comments are prefixed with `@copilot` so agents automatically pick them up as action items on the next pass. Agents should treat each `@copilot`-prefixed finding as an explicit request to investigate and, if valid, fix the issue in a follow-up commit.
 - Agents should review their own work before asking for additional review.
 - Pull requests should call out risks, validation, and any follow-up work explicitly.
 - Review comments that represent durable rules should be promoted into repository docs or automation.

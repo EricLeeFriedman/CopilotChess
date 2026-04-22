@@ -86,7 +86,11 @@ jobs:
           ).decode('utf-8', errors='replace')
 
           if len(diff) > MAX_DIFF_CHARS:
-              diff = diff[:MAX_DIFF_CHARS] + '\n\n[... diff truncated at 12 000 chars ...]'
+              # Truncate at the last newline within the limit so we never cut mid-line.
+              cutoff = diff.rfind('\n', 0, MAX_DIFF_CHARS)
+              if cutoff == -1:
+                  cutoff = MAX_DIFF_CHARS
+              diff = diff[:cutoff] + '\n\n[... diff truncated at 12 000 chars ...]'
 
           # ── build prompt ─────────────────────────────────────────────────────
 
