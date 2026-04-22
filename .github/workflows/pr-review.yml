@@ -168,6 +168,8 @@ jobs:
               verdict = 'COMMENT'
 
           summary      = str(review_data.get('summary', '') or '')
+          if summary:
+              summary = '@copilot ' + summary
           raw_comments = review_data.get('comments') or []
 
           inline = [
@@ -175,7 +177,7 @@ jobs:
                   'path': c['path'],
                   'line': int(c['line']),
                   'side': str(c.get('side', 'RIGHT')),
-                  'body': c['body'],
+                  'body': '@copilot ' + c['body'],
               }
               for c in raw_comments
               if isinstance(c, dict)
