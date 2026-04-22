@@ -240,6 +240,14 @@ jobs:
           if review.get("event") not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
               review["event"] = "COMMENT"
 
+          # GitHub Actions' default GITHUB_TOKEN is not allowed to APPROVE PRs.
+          # Convert approvals into comments to avoid 422 failures.
+          if review.get("event") == "APPROVE":
+              review["event"] = "COMMENT"
+              review["body"] = ensure_prefix(
+                  (review.get("body") or "") + "\n\n(Approval converted to COMMENT: Actions cannot approve PRs.)"
+              )
+
           # ── 6. build and post GitHub PR review ────────────────────────────────
 
           inline_comments = []
