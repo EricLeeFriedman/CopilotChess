@@ -3,6 +3,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "types.h"
+
 // Hard crash on invariant violation — intentional null deref for a clear call stack.
 #define ASSERT(cond) do { if (!(cond)) { *(volatile int*)0 = 0; } } while(0)
 
@@ -11,9 +13,9 @@
 
 struct Arena
 {
-    unsigned char* base;
-    size_t         size;
-    size_t         offset;
+    uint8* base;
+    size_t size;
+    size_t offset;
 };
 
 struct AppMemory

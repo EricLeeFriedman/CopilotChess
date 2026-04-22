@@ -22,6 +22,7 @@ These rules are always-on repository guidance for Copilot.
 - Use C++.
 - Do not use object-oriented design as the primary structure.
 - Prefer C-style module APIs and plain structs with public data.
+- Use the project's sized integer types (`int8`, `uint8`, `int32`, `uint64`, etc. from `src/types.h`) instead of built-in or CRT integer types wherever bit width is meaningful. `size_t`, `bool`, and `void*` are fine as-is.
 - Avoid runtime dynamic memory allocation.
 - Allocate memory up front and divide it into subsystem-specific arenas.
 - Do not add third-party libraries.

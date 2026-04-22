@@ -2,6 +2,19 @@
 
 This document defines the intended architectural shape for the codebase. It is intentionally high level and will be expanded as subsystems are implemented.
 
+## Primitive Types
+
+All code should use the project's own sized types from `src/types.h` instead of built-in or CRT types wherever bit width is meaningful:
+
+| Type | Width | Use for |
+|---|---|---|
+| `int8` / `uint8` | 8-bit | Bytes, small flags, character data |
+| `int16` / `uint16` | 16-bit | Compact values where range is known |
+| `int32` / `uint32` | 32-bit | General integers, indices, counts |
+| `int64` / `uint64` | 64-bit | Large counts, timestamps, 64-bit IDs |
+
+`size_t` remains appropriate for memory sizes and pointer arithmetic. `bool` and `void*` are used as normal. Do not use `int`, `unsigned`, `char`, `long`, or `__int*` types directly outside of `types.h` itself.
+
 ## Top-Level Principles
 
 - Prefer simple modules with C-style function boundaries.

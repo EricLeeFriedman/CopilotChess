@@ -12,11 +12,11 @@ static bool TestArena_BasicPush(void)
     Arena* arena = &s_Memory->test_scratch;
     ArenaReset(arena);
 
-    int* a = ArenaPushType(arena, int);
+    int32* a = ArenaPushType(arena, int32);
     if (!a) return false;
     *a = 42;
     if (*a != 42) return false;
-    if (arena->offset < sizeof(int)) return false;
+    if (arena->offset < sizeof(int32)) return false;
 
     return true;
 }
@@ -26,8 +26,8 @@ static bool TestArena_NoPushOverlap(void)
     Arena* arena = &s_Memory->test_scratch;
     ArenaReset(arena);
 
-    int* a = ArenaPushType(arena, int);
-    int* b = ArenaPushType(arena, int);
+    int32* a = ArenaPushType(arena, int32);
+    int32* b = ArenaPushType(arena, int32);
     if (!a || !b) return false;
     if (b <= a) return false;
 
@@ -39,12 +39,12 @@ static bool TestArena_AlignmentPadding(void)
     Arena* arena = &s_Memory->test_scratch;
     ArenaReset(arena);
 
-    // Push a single byte so offset == 1, then push an int — must be naturally aligned.
-    char* c = ArenaPushType(arena, char);
+    // Push a single byte so offset == 1, then push an int32 — must be naturally aligned.
+    uint8* c = ArenaPushType(arena, uint8);
     (void)c;
-    int* d = ArenaPushType(arena, int);
+    int32* d = ArenaPushType(arena, int32);
     if (!d) return false;
-    if ((size_t)d % alignof(int) != 0) return false;
+    if ((size_t)d % alignof(int32) != 0) return false;
 
     return true;
 }
@@ -54,10 +54,10 @@ static bool TestArena_ArrayPush(void)
     Arena* arena = &s_Memory->test_scratch;
     ArenaReset(arena);
 
-    int* arr = ArenaPushArray(arena, int, 10);
+    int32* arr = ArenaPushArray(arena, int32, 10);
     if (!arr) return false;
-    for (int i = 0; i < 10; ++i) arr[i] = i;
-    for (int i = 0; i < 10; ++i) if (arr[i] != i) return false;
+    for (int32 i = 0; i < 10; ++i) arr[i] = i;
+    for (int32 i = 0; i < 10; ++i) if (arr[i] != i) return false;
 
     return true;
 }
@@ -79,7 +79,7 @@ static bool TestArena_ResetRestoresOffset(void)
     Arena* arena = &s_Memory->test_scratch;
     ArenaReset(arena);
 
-    ArenaPushType(arena, int);
+    ArenaPushType(arena, int32);
     if (arena->offset == 0) return false;
     ArenaReset(arena);
     if (arena->offset != 0) return false;
@@ -88,7 +88,7 @@ static bool TestArena_ResetRestoresOffset(void)
 }
 
 // Verifies overflow detection without triggering the assertion.
-// Fills the arena to within one int of capacity, then confirms:
+// Fills the arena to within one int32 of capacity, then confirms:
 //   - the arithmetic that guards ArenaPush correctly identifies the would-be overflow
 //   - a push at the exact boundary still succeeds
 static bool TestArena_OverflowDetectable(void)
@@ -96,22 +96,22 @@ static bool TestArena_OverflowDetectable(void)
     Arena* arena = &s_Memory->test_scratch;
     ArenaReset(arena);
 
-    // Fill all but sizeof(int) bytes using alignment 1 to avoid padding surprises.
-    size_t leave = sizeof(int);
+    // Fill all but sizeof(int32) bytes using alignment 1 to avoid padding surprises.
+    size_t leave = sizeof(int32);
     ArenaPush(arena, arena->size - leave, 1);
 
-    // Exactly one int's worth of space should remain.
+    // Exactly one int32's worth of space should remain.
     size_t remaining = arena->size - arena->offset;
     if (remaining != leave) return false;
 
-    // Two ints would overflow — verify the pre-flight arithmetic catches it.
-    if (arena->offset + sizeof(int) * 2 <= arena->size) return false;
+    // Two int32s would overflow — verify the pre-flight arithmetic catches it.
+    if (arena->offset + sizeof(int32) * 2 <= arena->size) return false;
 
-    // One int fits — the same arithmetic should pass.
-    if (arena->offset + sizeof(int) > arena->size) return false;
+    // One int32 fits — the same arithmetic should pass.
+    if (arena->offset + sizeof(int32) > arena->size) return false;
 
     // Confirm the actual push succeeds and exhausts the arena.
-    int* p = ArenaPushType(arena, int);
+    int32* p = ArenaPushType(arena, int32);
     if (!p) return false;
     if (arena->offset != arena->size) return false;
 
@@ -125,7 +125,7 @@ static bool TestMemory_ArenasCoverFullBlock(void)
         s_Memory->renderer.size   +
         s_Memory->input.size      +
         s_Memory->test_scratch.size;
-    if (covered != MEMORY_TOTAL_SIZE)  return false;
+    if (covered != MEMORY_TOTAL_SIZE)    return false;
     if (covered != s_Memory->total_size) return false;
 
     return true;
@@ -133,7 +133,7 @@ static bool TestMemory_ArenasCoverFullBlock(void)
 
 static bool TestMemory_ArenasAreContiguous(void)
 {
-    unsigned char* base = (unsigned char*)s_Memory->block;
+    uint8* base = (uint8*)s_Memory->block;
 
     if (s_Memory->game_state.base   != base)                                   return false;
     if (s_Memory->renderer.base     != base + MEMORY_GAME_STATE_SIZE)          return false;

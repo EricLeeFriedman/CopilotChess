@@ -12,7 +12,7 @@ bool MemoryInit(AppMemory* memory)
     memory->block      = block;
     memory->total_size = MEMORY_TOTAL_SIZE;
 
-    unsigned char* cursor = (unsigned char*)block;
+    uint8* cursor = (uint8*)block;
 
     memory->game_state   = { cursor, MEMORY_GAME_STATE_SIZE,   0 };
     cursor += MEMORY_GAME_STATE_SIZE;
