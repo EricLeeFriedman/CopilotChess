@@ -49,3 +49,12 @@ The Copilot setup workflow locates the latest installed Visual Studio toolchain,
 ## Administrative Note
 
 GitHub Copilot cloud-agent Windows environments require repository administrators to use compatible network controls for the self-hosted runner. The repository commit can prepare the workflow file, but runner registration and repository security settings must still be handled outside the repository.
+
+## Workflows
+
+The repository contains two GitHub Actions workflows:
+
+| Workflow | File | Runner | Purpose |
+|---|---|---|---|
+| Build | `.github/workflows/build.yml` | `windows-latest` | Compile and run the built-in test suite on every push/PR targeting `main`. Requires the Windows MSVC toolchain. |
+| PR Adversarial Review | `.github/workflows/pr-review.yml` | `ubuntu-latest` | Post an automated adversarial code review on every pull request. Uses the GitHub Models API with `GITHUB_TOKEN` — no external secrets required. Intentionally runs on `ubuntu-latest` because no Windows build toolchain is needed. |
