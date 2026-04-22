@@ -1,0 +1,86 @@
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+static bool RunTests(void);
+
+int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode)
+{
+    UNREFERENCED_PARAMETER(prevInstance);
+
+    if (lstrcmpA(commandLine, "--test") == 0)
+    {
+        bool passed = RunTests();
+        return passed ? 0 : 1;
+    }
+
+    WNDCLASSEX windowClass    = {};
+    windowClass.cbSize        = sizeof(windowClass);
+    windowClass.style         = CS_HREDRAW | CS_VREDRAW;
+    windowClass.lpfnWndProc   = WindowProc;
+    windowClass.hInstance     = instance;
+    windowClass.hCursor       = LoadCursor(0, IDC_ARROW);
+    windowClass.lpszClassName = "CopilotChess";
+
+    if (!RegisterClassEx(&windowClass))
+    {
+        MessageBoxA(0, "Failed to register window class.", "Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    HWND window = CreateWindowEx(
+        0,
+        "CopilotChess",
+        "CopilotChess",
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720,
+        0, 0, instance, 0
+    );
+
+    if (!window)
+    {
+        MessageBoxA(0, "Failed to create window.", "Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    ShowWindow(window, showCode);
+
+    bool running = true;
+    while (running)
+    {
+        MSG message;
+        while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
+        {
+            if (message.message == WM_QUIT)
+            {
+                running = false;
+            }
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+        }
+
+        // TODO: update and render
+    }
+
+    return 0;
+}
+
+static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    switch (message)
+    {
+        case WM_DESTROY:
+        {
+            PostQuitMessage(0);
+        } return 0;
+    }
+
+    return DefWindowProc(window, message, wparam, lparam);
+}
+
+static bool RunTests(void)
+{
+    // Tests are added here as subsystems are implemented.
+    // Returning false causes the CI test step to fail.
+    return true;
+}

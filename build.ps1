@@ -66,7 +66,7 @@ $libs = @(
     'Gdi32.lib'
 )
 
-cl @compileFlags $mainSource @libs /link @linkerFlags
+cl @compileFlags $mainSource @libs /Fe:chess.exe /link @linkerFlags
 
 $exitCode = $LASTEXITCODE
 Pop-Location
