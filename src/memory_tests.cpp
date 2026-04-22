@@ -44,7 +44,7 @@ static bool TestArena_AlignmentPadding(void)
     (void)c;
     int32* d = ArenaPushType(arena, int32);
     if (!d) return false;
-    if ((size_t)d % alignof(int32) != 0) return false;
+    if ((uint64)d % alignof(int32) != 0) return false;
 
     return true;
 }
@@ -97,11 +97,11 @@ static bool TestArena_OverflowDetectable(void)
     ArenaReset(arena);
 
     // Fill all but sizeof(int32) bytes using alignment 1 to avoid padding surprises.
-    size_t leave = sizeof(int32);
+    uint64 leave = sizeof(int32);
     ArenaPush(arena, arena->size - leave, 1);
 
     // Exactly one int32's worth of space should remain.
-    size_t remaining = arena->size - arena->offset;
+    uint64 remaining = arena->size - arena->offset;
     if (remaining != leave) return false;
 
     // Two int32s would overflow — verify the pre-flight arithmetic catches it.
@@ -120,7 +120,7 @@ static bool TestArena_OverflowDetectable(void)
 
 static bool TestMemory_ArenasCoverFullBlock(void)
 {
-    size_t covered =
+    uint64 covered =
         s_Memory->game_state.size +
         s_Memory->renderer.size   +
         s_Memory->input.size      +

@@ -11,9 +11,9 @@ All code should use the project's own sized types from `src/types.h` instead of 
 | `int8` / `uint8` | 8-bit | Bytes, small flags, character data |
 | `int16` / `uint16` | 16-bit | Compact values where range is known |
 | `int32` / `uint32` | 32-bit | General integers, indices, counts |
-| `int64` / `uint64` | 64-bit | Large counts, timestamps, 64-bit IDs |
+| `int64` / `uint64` | 64-bit | Large counts, timestamps, sizes, offsets |
 
-`size_t` remains appropriate for memory sizes and pointer arithmetic. `bool` and `void*` are used as normal. Do not use `int`, `unsigned`, `char`, `long`, or `__int*` types directly outside of `types.h` itself.
+`uint64` replaces `size_t` for all sizes and offsets — a `static_assert` in `types.h` enforces that the two are the same width. `bool` and `void*` are used as normal. Do not use `int`, `unsigned`, `char`, `long`, `size_t`, or `__int*` types directly outside of `types.h` itself.
 
 ## Top-Level Principles
 
