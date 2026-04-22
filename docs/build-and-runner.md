@@ -6,22 +6,16 @@
 .\build.ps1
 ```
 
-This repository is currently configured for a **self-hosted Windows x64 runner**.
-
-The workflow file uses the default self-hosted label set:
-
-- `self-hosted`
-- `Windows`
-- `X64`
+This repository uses the **`windows-latest` GitHub-hosted runner**.
 
 ## Runner Requirements
 
-The self-hosted runner should provide:
+The `windows-latest` runner provides everything needed out of the box:
 
 - Windows x64
 - PowerShell
 - Git
-- Visual Studio Build Tools or Visual Studio with the C++ x64 toolchain installed
+- Visual Studio Build Tools with the C++ x64 toolchain
 - `vswhere.exe`
 
 ## Building Locally Or In CI
