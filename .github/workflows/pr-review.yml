@@ -92,6 +92,32 @@ jobs:
                   truncated = truncated[:last_nl]
               diff_raw = truncated + "\n\n[diff truncated due to size]\n"
 
+          # ── 1b. strip workflow files from diff ────────────────────────────────
+          # The PR may touch .github/workflows/ alongside reviewed paths; exclude
+          # those sections so the LLM never comments on workflow files.
+
+          def filter_diff_sections(diff_text, exclude_prefix=".github/workflows/"):
+              sections = []
+              current = []
+              skip = False
+              for line in diff_text.splitlines(keepends=True):
+                  if line.startswith("diff --git "):
+                      if current and not skip:
+                          sections.extend(current)
+                      current = [line]
+                      skip = exclude_prefix in line
+                  else:
+                      current.append(line)
+              if current and not skip:
+                  sections.extend(current)
+              return "".join(sections)
+
+          diff_raw = filter_diff_sections(diff_raw)
+
+          if not diff_raw.strip():
+              print("No reviewable files in diff after filtering — skipping review.")
+              sys.exit(0)
+
           # ── 2. load project context ────────────────────────────────────────────
 
           context_text = ""
@@ -123,6 +149,9 @@ jobs:
             in main.cpp's RunTests().
           - Unsafe or incorrect use of the memory arena API.
           - Any other violation of the constraints in copilot-instructions.md.
+
+          Do NOT comment on files under .github/workflows/ — those are excluded
+          from review scope.
 
           Output ONLY valid JSON (no markdown, no code fences) matching this schema exactly:
           {
@@ -216,8 +245,13 @@ jobs:
           inline_comments = []
           for c in review.get("comments", []):
               try:
+                  path = str(c["path"])
+                  # Never post inline comments on workflow files, even if LLM ignores
+                  # the system-prompt instruction
+                  if path.startswith(".github/workflows/"):
+                      continue
                   inline_comments.append({
-                      "path": str(c["path"]),
+                      "path": path,
                       "line": int(c["line"]),
                       "side": "RIGHT",
                       "body": str(c["body"]),
