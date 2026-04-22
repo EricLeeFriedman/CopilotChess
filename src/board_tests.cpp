@@ -119,6 +119,7 @@ static bool TestBoard_TotalPieceCount(void)
 
 bool RunBoardTests(AppMemory* memory)
 {
+    ASSERT(memory);
     s_Memory = memory;
 
     RUN_TEST(TestBoard_WhiteBackRank);

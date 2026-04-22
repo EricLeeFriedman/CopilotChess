@@ -23,6 +23,8 @@ All code should use the project's own sized types from `src/types.h` instead of 
 - Divide memory into distinct arenas based on lifetime and subsystem ownership.
 - Avoid hidden global behavior unless the platform boundary requires it.
 - Keep the design legible to future agents through small files and explicit naming.
+- `windows.h` and other Win32 headers are required by the platform and are always allowed. "Avoid the C standard library" targets CRT headers like `<stdio.h>`, `<stdlib.h>`, and `<string.h>`, not the Win32 API.
+- Static `const` data at file scope (lookup tables, named constants) is fine and preferred over pushing compile-time data into memory arenas.
 
 ## Planned Subsystems
 
