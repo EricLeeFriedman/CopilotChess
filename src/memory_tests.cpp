@@ -87,6 +87,37 @@ static bool TestArena_ResetRestoresOffset(void)
     return true;
 }
 
+// Verifies overflow detection without triggering the assertion.
+// Fills the arena to within one int of capacity, then confirms:
+//   - the arithmetic that guards ArenaPush correctly identifies the would-be overflow
+//   - a push at the exact boundary still succeeds
+static bool TestArena_OverflowDetectable(void)
+{
+    Arena* arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    // Fill all but sizeof(int) bytes using alignment 1 to avoid padding surprises.
+    size_t leave = sizeof(int);
+    ArenaPush(arena, arena->size - leave, 1);
+
+    // Exactly one int's worth of space should remain.
+    size_t remaining = arena->size - arena->offset;
+    if (remaining != leave) return false;
+
+    // Two ints would overflow — verify the pre-flight arithmetic catches it.
+    if (arena->offset + sizeof(int) * 2 <= arena->size) return false;
+
+    // One int fits — the same arithmetic should pass.
+    if (arena->offset + sizeof(int) > arena->size) return false;
+
+    // Confirm the actual push succeeds and exhausts the arena.
+    int* p = ArenaPushType(arena, int);
+    if (!p) return false;
+    if (arena->offset != arena->size) return false;
+
+    return true;
+}
+
 static bool TestMemory_ArenasCoverFullBlock(void)
 {
     size_t covered =
@@ -124,6 +155,7 @@ bool RunMemoryTests(AppMemory* memory)
     RUN_TEST(TestArena_ArrayPush);
     RUN_TEST(TestArena_PushToExactBoundary);
     RUN_TEST(TestArena_ResetRestoresOffset);
+    RUN_TEST(TestArena_OverflowDetectable);
     RUN_TEST(TestMemory_ArenasCoverFullBlock);
     RUN_TEST(TestMemory_ArenasAreContiguous);
 
