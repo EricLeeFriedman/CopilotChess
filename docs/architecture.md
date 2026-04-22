@@ -23,13 +23,18 @@ Own the pixel buffer, drawing primitives, sprite or glyph composition strategy, 
 
 ### Memory
 
-Own startup allocation and arena partitioning. A likely initial split is:
+Owns startup allocation and arena partitioning. One 64 MB block is reserved and committed via `VirtualAlloc` at process startup. It is carved into four contiguous arenas:
 
-- permanent arena
-- frame arena
-- test arena
+| Arena | Size | Purpose |
+|---|---|---|
+| `game_state` | 16 MB | Board state, turn state, move history, win state |
+| `renderer` | 16 MB | Pixel buffer and drawing scratch |
+| `input` | 16 MB | Input state and drag-and-drop scratch |
+| `test_scratch` | 16 MB | Temporary storage for in-process tests; reset between test cases |
 
-Additional arenas can be added only when a subsystem has a clear lifetime boundary that benefits from separation.
+All arenas share the same `Arena` type: `{ base, size, offset }`. Push helpers advance `offset` and return an aligned pointer. Individual frees are not supported. The `test_scratch` arena is reset via `ArenaReset` between test cases. Additional arenas should only be added when a subsystem has a clear and distinct lifetime boundary.
+
+The implementation lives in `src/memory.h`.
 
 ### Game State
 
