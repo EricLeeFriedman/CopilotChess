@@ -23,32 +23,35 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Configure MSVC environment
-        shell: powershell
+        shell: pwsh
         run: |
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
           if (-not (Test-Path $vswhere)) {
-              throw 'vswhere.exe was not found. Install Visual Studio Build Tools on the self-hosted runner.'
+              throw 'vswhere.exe not found. Install Visual Studio Build Tools on the self-hosted runner.'
           }
 
           $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $instanceId  = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property instanceId
           if (-not $installPath) {
               throw 'No Visual Studio installation with the C++ x64 toolchain was found.'
           }
 
-          $devCmd = Join-Path $installPath 'Common7\Tools\VsDevCmd.bat'
-          if (-not (Test-Path $devCmd)) {
-              throw 'VsDevCmd.bat was not found in the selected Visual Studio installation.'
+          $devShellDll = Join-Path $installPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
+          if (-not (Test-Path $devShellDll)) {
+              throw "Microsoft.VisualStudio.DevShell.dll not found at: $devShellDll"
           }
 
-          $exportLines = & cmd /s /c "`"$devCmd`" -arch=x64 -host_arch=x64 >nul && set"
-          foreach ($line in $exportLines) {
-              if ($line -match '^(PATH|INCLUDE|LIB|LIBPATH)=(.*)$') {
-                  "$($matches[1])=$($matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              }
-          }
+          Import-Module $devShellDll
+          Enter-VsDevShell $instanceId -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+
+          # Export toolchain paths for subsequent steps
+          "PATH=$env:PATH"       | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "INCLUDE=$env:INCLUDE" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "LIB=$env:LIB"         | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "LIBPATH=$env:LIBPATH" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Verify toolchain
-        shell: powershell
+        shell: pwsh
         run: |
-          Get-Command cl.exe | Format-List -Property Source
-          cl.exe 2>&1 | Select-Object -First 5
+          Get-Command cl.exe | Select-Object -ExpandProperty Source
+          cl.exe 2>&1 | Select-Object -First 3

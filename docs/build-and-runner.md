@@ -26,9 +26,33 @@ The self-hosted runner should provide:
 - Visual Studio Build Tools or Visual Studio with the C++ x64 toolchain installed
 - `vswhere.exe`
 
+## Building Locally Or In CI
+
+```
+.\build.ps1
+```
+
+`build.ps1` is fully self-contained. It locates Visual Studio via `vswhere.exe`, imports the `Microsoft.VisualStudio.DevShell` module, calls `Enter-VsDevShell` to configure the x64 toolchain, and then invokes `cl.exe` on `src\main.cpp`. Output goes to `build\`.
+
+No separate environment setup step is required — you can call `build.ps1` from any PowerShell terminal that has Visual Studio installed.
+
+## Compiler Flags
+
+The build uses these flags (defined in `build.ps1`):
+
+| Flag | Purpose |
+|------|---------|
+| `/MT` | Statically link the runtime |
+| `/GR-` | Disable RTTI |
+| `/EHa-` | Disable exceptions |
+| `/WX /W4` | Treat all warnings as errors at level 4 |
+| `-std:c++20` | C++20 standard |
+| `-Zi` | Debug information |
+| `/INCREMENTAL:NO` | Deterministic full links |
+
 ## Environment Preparation
 
-The Copilot setup workflow locates the latest installed Visual Studio toolchain, runs `VsDevCmd.bat`, and exports the relevant MSVC environment variables so the agent session can discover `cl.exe`, headers, and libraries consistently.
+The Copilot setup workflow locates the latest installed Visual Studio toolchain, imports `Microsoft.VisualStudio.DevShell.dll`, calls `Enter-VsDevShell`, and exports the relevant MSVC environment variables to `GITHUB_ENV` so `cl.exe` is available in subsequent agent steps.
 
 ## Administrative Note
 
