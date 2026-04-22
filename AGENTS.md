@@ -37,6 +37,23 @@ Read these files in order before making changes:
 - `.github\copilot-instructions.md` holds the always-on repository rules.
 - `docs\` holds deeper design, workflow, testing, and platform guidance.
 
+## Doc Ownership Map
+
+When you make a change, update the docs in the right column of this table in the same commit.
+
+| Change type | Update these docs |
+|---|---|
+| New subsystem or significant structural change to `src\` | `docs\architecture.md` |
+| New test or change to test infrastructure or `RunTests()` | `docs\testing.md` |
+| Change to `build.ps1` or compiler flags | `docs\build-and-runner.md` |
+| Change to any file in `.github\workflows\` | `docs\build-and-runner.md` |
+| Change to a gameplay rule, input behavior, or win condition | `docs\requirements.md` |
+| Change to the task or PR workflow | `docs\workflow.md` |
+| Major milestone: new subsystem working end-to-end | `README.md` Current State |
+| Change to a core constraint (platform, memory, testing, build) | `.github\copilot-instructions.md` |
+
+If a change touches multiple rows, update all the listed docs. If a doc update would be a lie (nothing actually changed in that area), skip it.
+
 ## When Docs and Code Disagree
 
 Fix the disagreement in the same change if possible. If the implementation is correct and the docs are stale, update the docs. If the docs are correct and the implementation is wrong, fix the implementation and keep the docs aligned.

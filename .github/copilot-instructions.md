@@ -39,5 +39,5 @@ These rules are always-on repository guidance for Copilot.
 - Treat repository files as the source of truth over chat history.
 - Read `AGENTS.md` first, then the relevant files in `docs\` before making substantial changes.
 - Keep changes scoped to a single task or issue when possible.
-- Update documentation in the same change when requirements or architecture assumptions move.
+- Update documentation in the same change when code moves. Use the doc ownership map in `AGENTS.md` to determine which docs to update.
 - Prefer explicit data flow, deterministic behavior, and simple boundaries over clever abstractions.
