@@ -1,5 +1,14 @@
 # Build And Runner Notes
 
+## CI Workflows
+
+| Workflow file | Runner | Trigger | Purpose |
+|---|---|---|---|
+| `.github/workflows/build.yml` | `windows-latest` | push / pull_request to `main` | Compile with `build.ps1` and run `chess.exe --test` |
+| `.github/workflows/pr-review.yml` | `ubuntu-latest` | pull_request (opened, synchronize, reopened) | Adversarial LLM code review posted as a formal GitHub PR review |
+
+The `pr-review.yml` workflow uses the GitHub Models API (`gpt-4o`) with the built-in `GITHUB_TOKEN` — no external secrets are required. It loads `.github/copilot-instructions.md` and `AGENTS.md` as review context, then posts a request-changes / comment / approve review with inline comments on the PR.
+
 ## Build Entry Point
 
 ```

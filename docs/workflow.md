@@ -20,6 +20,7 @@ This repository is designed so that work can move from intent to merged pull req
 
 ## Review Expectations
 
+- Every pull request receives an automated adversarial review from the `pr-review.yml` workflow before a human looks at it. The reviewer acts as a skeptical expert, checking for bugs, constraint violations, and missing doc updates. It posts a formal GitHub PR review (request-changes / comment / approve) with inline comments where possible.
 - Agents should review their own work before asking for additional review.
 - Pull requests should call out risks, validation, and any follow-up work explicitly.
 - Review comments that represent durable rules should be promoted into repository docs or automation.

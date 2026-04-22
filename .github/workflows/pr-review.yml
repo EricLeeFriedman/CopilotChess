@@ -1,0 +1,208 @@
+name: Adversarial PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  models: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run adversarial review
+        shell: python3 {0}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          import json, os, sys, urllib.request, urllib.error
+
+          GH_TOKEN  = os.environ['GH_TOKEN']
+          PR_NUMBER = os.environ['PR_NUMBER']
+          REPO      = os.environ['REPO']
+          HEAD_SHA  = os.environ['HEAD_SHA']
+
+          GITHUB_API  = 'https://api.github.com'
+          MODELS_API  = 'https://models.inference.ai.azure.com'
+          MODEL       = 'gpt-4o'
+          MAX_DIFF_CHARS = 12000
+
+          # ── helpers ──────────────────────────────────────────────────────────
+
+          def gh_get(path, accept='application/vnd.github+json'):
+              req = urllib.request.Request(
+                  f'{GITHUB_API}{path}',
+                  headers={
+                      'Authorization': f'Bearer {GH_TOKEN}',
+                      'Accept': accept,
+                      'X-GitHub-Api-Version': '2022-11-28',
+                  },
+              )
+              with urllib.request.urlopen(req) as r:
+                  return r.read()
+
+          def gh_post(path, data):
+              req = urllib.request.Request(
+                  f'{GITHUB_API}{path}',
+                  data=json.dumps(data).encode(),
+                  headers={
+                      'Authorization': f'Bearer {GH_TOKEN}',
+                      'Accept': 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                      'Content-Type': 'application/json',
+                  },
+                  method='POST',
+              )
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read())
+
+          def read_file(path):
+              try:
+                  with open(path, encoding='utf-8', errors='replace') as f:
+                      return f.read()
+              except Exception:
+                  return ''
+
+          # ── load project context ─────────────────────────────────────────────
+
+          copilot_ctx = read_file('.github/copilot-instructions.md')
+          agents_ctx  = read_file('AGENTS.md')
+
+          # ── fetch PR diff ────────────────────────────────────────────────────
+
+          diff = gh_get(
+              f'/repos/{REPO}/pulls/{PR_NUMBER}',
+              accept='application/vnd.github.v3.diff',
+          ).decode('utf-8', errors='replace')
+
+          if len(diff) > MAX_DIFF_CHARS:
+              diff = diff[:MAX_DIFF_CHARS] + '\n\n[... diff truncated at 12 000 chars ...]'
+
+          # ── build prompt ─────────────────────────────────────────────────────
+
+          system_prompt = f"""You are an adversarial code reviewer for a C++ Win32 chess application.
+          Your job: find real bugs, constraint violations, and missing documentation updates.
+          Do NOT comment on style, formatting, whitespace, or naming unless a hard rule is violated.
+
+          === PROJECT CONSTRAINTS (.github/copilot-instructions.md) ===
+          {copilot_ctx}
+
+          === DOC OWNERSHIP RULES (AGENTS.md) ===
+          {agents_ctx}
+
+          Respond with ONLY a JSON object — no prose, no markdown code fences:
+          {{
+            "verdict": "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
+            "summary": "<overall findings in markdown, empty string when approving>",
+            "comments": [
+              {{"path": "<repo-relative file path>", "line": <line number in new file>, "side": "RIGHT", "body": "<finding>"}}
+            ]
+          }}
+
+          Rules:
+          - REQUEST_CHANGES: one or more real bugs or hard constraint violations found.
+          - APPROVE: changes look correct and comply with all constraints.
+          - COMMENT: minor concerns worth noting but not blocking.
+          - comments may be an empty array.
+          - line must be a line number that appears on the + side of the diff.
+          - Only include findings you are confident about. High signal-to-noise is mandatory."""
+
+          user_message = f'Review this PR diff:\n\n```diff\n{diff}\n```'
+
+          # ── call GitHub Models API ───────────────────────────────────────────
+
+          payload = {
+              'model': MODEL,
+              'messages': [
+                  {'role': 'system', 'content': system_prompt},
+                  {'role': 'user',   'content': user_message},
+              ],
+              'temperature': 0.2,
+              'max_tokens': 2000,
+          }
+
+          req = urllib.request.Request(
+              f'{MODELS_API}/chat/completions',
+              data=json.dumps(payload).encode(),
+              headers={
+                  'Authorization': f'Bearer {GH_TOKEN}',
+                  'Content-Type': 'application/json',
+              },
+              method='POST',
+          )
+          try:
+              with urllib.request.urlopen(req) as r:
+                  result = json.loads(r.read())
+          except urllib.error.HTTPError as e:
+              print(f'Models API error {e.code}: {e.read().decode()}', file=sys.stderr)
+              sys.exit(1)
+
+          content = result['choices'][0]['message']['content'].strip()
+
+          # ── parse structured response ────────────────────────────────────────
+
+          # Strip accidental markdown fences from the model output.
+          if content.startswith('```'):
+              lines = content.split('\n')
+              content = '\n'.join(lines[1:])
+              if content.endswith('```'):
+                  content = content.rsplit('```', 1)[0].strip()
+
+          try:
+              review_data = json.loads(content)
+          except json.JSONDecodeError:
+              review_data = {'verdict': 'COMMENT', 'summary': content, 'comments': []}
+
+          verdict = review_data.get('verdict', 'COMMENT')
+          if verdict not in ('REQUEST_CHANGES', 'COMMENT', 'APPROVE'):
+              verdict = 'COMMENT'
+
+          summary      = str(review_data.get('summary', '') or '')
+          raw_comments = review_data.get('comments') or []
+
+          inline = [
+              {
+                  'path': c['path'],
+                  'line': int(c['line']),
+                  'side': str(c.get('side', 'RIGHT')),
+                  'body': c['body'],
+              }
+              for c in raw_comments
+              if isinstance(c, dict)
+              and c.get('path') and c.get('line') and c.get('body')
+          ]
+
+          # ── post GitHub PR review ────────────────────────────────────────────
+
+          review_payload = {
+              'commit_id': HEAD_SHA,
+              'body':      summary,
+              'event':     verdict,
+              'comments':  inline,
+          }
+
+          try:
+              gh_post(f'/repos/{REPO}/pulls/{PR_NUMBER}/reviews', review_payload)
+              print(f'Posted {verdict} review with {len(inline)} inline comment(s).')
+          except urllib.error.HTTPError as e:
+              err = e.read().decode()
+              print(f'Review post failed ({e.code}): {err}', file=sys.stderr)
+              # Retry without inline comments — the model may have emitted
+              # line numbers that do not appear in the diff.
+              review_payload['comments'] = []
+              try:
+                  gh_post(f'/repos/{REPO}/pulls/{PR_NUMBER}/reviews', review_payload)
+                  print('Posted review without inline comments (fallback).')
+              except urllib.error.HTTPError as e2:
+                  print(f'Fallback also failed ({e2.code}): {e2.read().decode()}', file=sys.stderr)
+                  sys.exit(1)
