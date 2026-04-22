@@ -44,7 +44,7 @@ When you make a change, update the docs in the right column of this table in the
 | Change type | Update these docs |
 |---|---|
 | New subsystem or significant structural change to `src\` | `docs\architecture.md` |
-| New test or change to test infrastructure or `RunTests()` | `docs\testing.md` |
+| New test or change to test infrastructure, `RunTests()`, or any `*_tests.cpp` file | `docs\testing.md` |
 | Change to `build.ps1` or compiler flags | `docs\build-and-runner.md` |
 | Change to any file in `.github\workflows\` | `docs\build-and-runner.md` |
 | Change to a gameplay rule, input behavior, or win condition | `docs\requirements.md` |

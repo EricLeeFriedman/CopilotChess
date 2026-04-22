@@ -32,7 +32,8 @@ These rules are always-on repository guidance for Copilot.
 - Keep testing inside the application.
 - The executable must support a dedicated testing mode.
 - Do not create a separate test harness application.
-- The intended build entry point is a simple `build.ps1` script that invokes `cl.exe`.
+- Each subsystem's tests live in a dedicated `<subsystem>_tests.cpp` file. `RunTests()` in `main.cpp` calls each subsystem's `RunXxxTests` entry point.
+- The intended build entry point is a simple `build.ps1` script that invokes `cl.exe` on all `*.cpp` files in `src\`.
 
 ## Working Rules
 

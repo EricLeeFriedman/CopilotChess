@@ -30,9 +30,9 @@ The self-hosted runner should provide:
 .\build.ps1
 ```
 
-`build.ps1` is fully self-contained. It locates Visual Studio via `vswhere.exe`, imports the `Microsoft.VisualStudio.DevShell` module, calls `Enter-VsDevShell` to configure the x64 toolchain, and then invokes `cl.exe` on `src\main.cpp`. Output goes to `build\`.
+`build.ps1` is fully self-contained. It locates Visual Studio via `vswhere.exe`, imports the `Microsoft.VisualStudio.DevShell` module, calls `Enter-VsDevShell` to configure the x64 toolchain, and then invokes `cl.exe` on all `*.cpp` files found in `src\`. Output goes to `build\`.
 
-No separate environment setup step is required — you can call `build.ps1` from any PowerShell terminal that has Visual Studio installed.
+Every `.cpp` file in `src\` is compiled and linked into the single `chess.exe` binary. No separate environment setup step is required — you can call `build.ps1` from any PowerShell terminal that has Visual Studio installed.
 
 ## Compiler Flags
 

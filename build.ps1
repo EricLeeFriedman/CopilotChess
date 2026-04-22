@@ -30,15 +30,9 @@ Import-Module $devShellDll
 Enter-VsDevShell $instanceId -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
 
 # Source and output paths
-$repoRoot   = $PSScriptRoot
-$sourceDir  = Join-Path $repoRoot 'src'
-$buildDir   = Join-Path $repoRoot 'build'
-$mainSource = Join-Path $sourceDir 'main.cpp'
-
-if (-not (Test-Path $mainSource)) {
-    Write-Error "src\main.cpp not found. Add the application entry point before building."
-    exit 1
-}
+$repoRoot  = $PSScriptRoot
+$sourceDir = Join-Path $repoRoot 'src'
+$buildDir  = Join-Path $repoRoot 'build'
 
 New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
 Push-Location $buildDir
@@ -66,7 +60,14 @@ $libs = @(
     'Gdi32.lib'
 )
 
-cl @compileFlags $mainSource @libs /Fe:chess.exe /link @linkerFlags
+$sources = @(Get-ChildItem $sourceDir -Filter '*.cpp' | ForEach-Object { $_.FullName })
+
+if ($sources.Count -eq 0) {
+    Write-Error "No .cpp files found in $sourceDir"
+    exit 1
+}
+
+cl @compileFlags @sources @libs /Fe:chess.exe /link @linkerFlags
 
 $exitCode = $LASTEXITCODE
 Pop-Location

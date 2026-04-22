@@ -24,7 +24,24 @@ Testing is part of the product, not an external harness.
 
 Exits with code `0` when all tests pass, `1` on any failure. The CI workflow (`build.yml`) runs this automatically on every push and PR.
 
-The `RunTests()` function in `src\main.cpp` is the entry point for all tests. Add test calls there as subsystems are built.
+## Test File Convention
+
+Each subsystem gets a dedicated test file named `<subsystem>_tests.cpp` (e.g., `memory_tests.cpp`). That file:
+
+- Includes the subsystem header and `tests.h`
+- Defines all test functions for that subsystem as `static` (internal to the file)
+- Uses a file-static pointer to receive shared test state (e.g., `AppMemory*`) set by the suite entry point
+- Exports a single `RunXxxTests(...)` function that sets state, runs all tests via `RUN_TEST`, and returns `bool`
+
+`src/main.cpp` forward-declares each `RunXxxTests` function and calls them from `RunTests()`. `src/tests.h` provides the shared `RUN_TEST` macro.
+
+## Test Infrastructure Files
+
+| File | Purpose |
+|---|---|
+| `src/tests.h` | `RUN_TEST` macro shared by all test files |
+| `src/<subsystem>_tests.cpp` | Tests for that subsystem |
+| `src/main.cpp` `RunTests()` | Top-level runner — calls each `RunXxxTests` |
 
 ## Execution Expectations
 
