@@ -1,0 +1,54 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Configure MSVC environment
+        shell: powershell
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path $vswhere)) {
+              throw 'vswhere.exe was not found. Install Visual Studio Build Tools on the self-hosted runner.'
+          }
+
+          $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installPath) {
+              throw 'No Visual Studio installation with the C++ x64 toolchain was found.'
+          }
+
+          $devCmd = Join-Path $installPath 'Common7\Tools\VsDevCmd.bat'
+          if (-not (Test-Path $devCmd)) {
+              throw 'VsDevCmd.bat was not found in the selected Visual Studio installation.'
+          }
+
+          $exportLines = & cmd /s /c "`"$devCmd`" -arch=x64 -host_arch=x64 >nul && set"
+          foreach ($line in $exportLines) {
+              if ($line -match '^(PATH|INCLUDE|LIB|LIBPATH)=(.*)$') {
+                  "$($matches[1])=$($matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              }
+          }
+
+      - name: Verify toolchain
+        shell: powershell
+        run: |
+          Get-Command cl.exe | Format-List -Property Source
+          cl.exe 2>&1 | Select-Object -First 5
