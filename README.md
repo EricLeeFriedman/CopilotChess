@@ -2,8 +2,6 @@
 
 CopilotChess is a Windows-only chess project built to exercise harness engineering skills in an agent-first workflow.
 
-This repository intentionally starts with **no application code**. The first commit establishes the constraints, documentation, and GitHub scaffolding that future agents will use for design, implementation, review, and submission.
-
 ## Start Here
 
 1. `AGENTS.md` - entry point and document map for human and agent contributors.
@@ -16,9 +14,12 @@ This repository intentionally starts with **no application code**. The first com
 
 ## Current State
 
-- No game code has been added yet.
+- Win32 application skeleton is in place (`src\main.cpp`): opens a window, runs the message pump, and supports `--test` mode.
+- `build.ps1` compiles `src\main.cpp` to `build\chess.exe` using the local MSVC toolchain.
+- CI workflow (`.github\workflows\build.yml`) runs `build.ps1` and `chess.exe --test` on every push and PR.
 - GitHub issue and pull request templates are in place for structured work intake.
 - Copilot cloud-agent setup is targeted at a **self-hosted Windows x64 runner**.
+- No game logic has been implemented yet.
 
 ## Project Goals
 

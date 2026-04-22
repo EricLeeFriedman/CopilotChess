@@ -1,12 +1,10 @@
 # Build And Runner Notes
 
-## Intended Build Entry Point
+## Build Entry Point
 
-The product build should ultimately be driven by a simple `build.ps1` script that invokes `cl.exe`.
-
-That script is intentionally **not** introduced in the initial repository commit because this stage is reserved for agent workflow scaffolding and documentation only.
-
-## Copilot Cloud-Agent Target
+```
+.\build.ps1
+```
 
 This repository is currently configured for a **self-hosted Windows x64 runner**.
 

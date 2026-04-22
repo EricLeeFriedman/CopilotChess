@@ -1,6 +1,6 @@
 # Architecture Direction
 
-This document defines the intended architectural shape for the first implementation work. It is intentionally high level because the repository does not contain application code yet.
+This document defines the intended architectural shape for the codebase. It is intentionally high level and will be expanded as subsystems are implemented.
 
 ## Top-Level Principles
 

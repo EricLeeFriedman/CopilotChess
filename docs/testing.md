@@ -16,10 +16,19 @@ Testing is part of the product, not an external harness.
 4. Input-to-move translation for drag-and-drop interactions
 5. Memory and arena invariants that can be validated without user input
 
+## How To Run Tests
+
+```
+.\build\chess.exe --test
+```
+
+Exits with code `0` when all tests pass, `1` on any failure. The CI workflow (`build.yml`) runs this automatically on every push and PR.
+
+The `RunTests()` function in `src\main.cpp` is the entry point for all tests. Add test calls there as subsystems are built.
+
 ## Execution Expectations
 
-- Tests should run without opening an interactive gameplay session when test mode is selected.
-- The default build and validation flow should eventually be scriptable through PowerShell for both humans and agents.
+- Tests run without opening an interactive window when `--test` is passed.
 - New gameplay behavior should add or update tests in the same change whenever practical.
 
 ## Why This Matters
