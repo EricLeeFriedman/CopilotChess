@@ -53,6 +53,12 @@ The implementation lives in `src/memory.h`.
 
 Own board state, turn state, move history needed for rule evaluation, win state, and restart flow.
 
+The board is represented as a flat `Board` struct (declared in `src/board.h`) containing an 8×8 array of `Square` values. Each `Square` stores a `PieceType` and a `Color` — both `uint8` enums. `PIECE_NONE` / `COLOR_NONE` identify an empty square.
+
+Indexing convention: `squares[rank][file]` where rank 0 is White's back rank (rank 1 in chess notation) and rank 7 is Black's back rank (rank 8). Files 0–7 map to a–h.
+
+`InitBoard(Board*)` sets up the standard starting position. The caller is responsible for pushing a `Board` from the `game_state` arena before calling it.
+
 ### Chess Rules
 
 Own legal move generation, check detection, checkmate detection, and any supporting rule validation.
