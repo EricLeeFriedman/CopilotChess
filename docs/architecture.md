@@ -23,6 +23,8 @@ All code should use the project's own sized types from `src/types.h` instead of 
 - Divide memory into distinct arenas based on lifetime and subsystem ownership.
 - Avoid hidden global behavior unless the platform boundary requires it.
 - Keep the design legible to future agents through small files and explicit naming.
+- `windows.h` and other Win32 headers are required by the platform and are always allowed. "Avoid the C standard library" targets CRT headers like `<stdio.h>`, `<stdlib.h>`, and `<string.h>`, not the Win32 API.
+- Static `const` data at file scope (lookup tables, named constants) is fine and preferred over pushing compile-time data into memory arenas.
 
 ## Planned Subsystems
 
@@ -52,6 +54,12 @@ The implementation lives in `src/memory.h`.
 ### Game State
 
 Own board state, turn state, move history needed for rule evaluation, win state, and restart flow.
+
+The board is represented as a flat `Board` struct (declared in `src/board.h`) containing an 8×8 array of `Square` values. Each `Square` stores a `PieceType` and a `Color` — both `uint8` enums. `PIECE_NONE` / `COLOR_NONE` identify an empty square.
+
+Indexing convention: `squares[rank][file]` where rank 0 is White's back rank (rank 1 in chess notation) and rank 7 is Black's back rank (rank 8). Files 0–7 map to a–h.
+
+`InitBoard(Board*)` sets up the standard starting position. The caller is responsible for pushing a `Board` from the `game_state` arena before calling it.
 
 ### Chess Rules
 

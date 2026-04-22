@@ -26,7 +26,8 @@ These rules are always-on repository guidance for Copilot.
 - Avoid runtime dynamic memory allocation.
 - Allocate memory up front and divide it into subsystem-specific arenas.
 - Do not add third-party libraries.
-- Avoid the C standard library as much as practical.
+- Avoid the C standard library as much as practical. Win32 headers such as `windows.h` are required by the platform and are always allowed; this rule targets C standard library headers like `<stdio.h>`, `<stdlib.h>`, and `<string.h>`.
+- Static `const` data at file scope is fine and is preferred over forcing compile-time constants or lookup tables into memory arenas.
 
 ## Testing And Build Constraints
 
