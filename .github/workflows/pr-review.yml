@@ -3,10 +3,17 @@ name: PR Adversarial Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'build.ps1'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'README.md'
 
 permissions:
   contents: read
   pull-requests: write
+  models: read
 
 jobs:
   review:
