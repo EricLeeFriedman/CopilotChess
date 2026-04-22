@@ -9,6 +9,14 @@
 
 The `pr-review.yml` workflow uses the GitHub Models API (`gpt-4o`) with the built-in `GITHUB_TOKEN` — no external secrets are required. It loads `.github/copilot-instructions.md` and `AGENTS.md` as review context, then posts a request-changes / comment / approve review with inline comments on the PR.
 
+**Runner exception:** `pr-review.yml` intentionally uses `ubuntu-latest` rather than `windows-latest`. The adversarial review is a pure API workflow — it does not compile or run the game — so the Windows toolchain is not needed. All workflows that build or test the game must still use `windows-latest`.
+
+**Action versions used in CI:**
+
+| Action | Version | Workflow |
+|---|---|---|
+| `actions/checkout` | `v5` | `build.yml`, `pr-review.yml` |
+
 ## Build Entry Point
 
 ```
