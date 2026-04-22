@@ -23,6 +23,8 @@ This repository is designed so that work can move from intent to merged pull req
 - Agents should review their own work before asking for additional review.
 - Pull requests should call out risks, validation, and any follow-up work explicitly.
 - Review comments that represent durable rules should be promoted into repository docs or automation.
+- Every pull request receives an **automated adversarial review** from the `pr-review.yml` workflow before a human merges it. The workflow posts a formal GitHub PR review (request-changes / comment / approve) with inline comments where findings are location-specific.
+- All automated review findings — both the overall summary and every inline comment — are prefixed with `@copilot`. These prefixes make each finding an explicit directed action item that the Copilot coding agent picks up automatically on its next pass.
 
 ## Documentation Expectations
 
