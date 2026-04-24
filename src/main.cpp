@@ -90,11 +90,13 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
 
 bool RunMemoryTests(AppMemory* memory);
 bool RunBoardTests(AppMemory* memory);
+bool RunMovesTests(AppMemory* memory);
 
 static bool RunTests(void)
 {
     if (!RunMemoryTests(&g_Memory)) return false;
     if (!RunBoardTests(&g_Memory))  return false;
+    if (!RunMovesTests(&g_Memory))  return false;
     return true;
 }
 
