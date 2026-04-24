@@ -119,6 +119,7 @@ jobs:
           python3 << 'PYEOF'
           import json
           import os
+          import re
           import urllib.error
           import urllib.request
 
@@ -152,22 +153,40 @@ jobs:
                   return text
               return "@copilot " + (text if isinstance(text, str) else "")
 
-          raw_content = open("copilot-review-output.txt", encoding="utf-8").read().strip()
-          if raw_content.startswith("```"):
-              lines = raw_content.splitlines()
+          raw_content = open("copilot-review-output.txt", encoding="utf-8").read()
+          cleaned_content = raw_content.replace("\r", "").lstrip("\ufeff")
+          cleaned_content = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", cleaned_content).strip()
+
+          if cleaned_content.startswith("```"):
+              lines = cleaned_content.splitlines()
               if len(lines) >= 3:
-                  raw_content = "\n".join(lines[1:-1]).strip()
+                  cleaned_content = "\n".join(lines[1:-1]).strip()
 
           try:
-              review = json.loads(raw_content)
+              review = json.loads(cleaned_content)
           except json.JSONDecodeError as exc:
-              print(f"Copilot CLI response is not valid JSON: {exc}")
-              print(raw_content[:1000])
-              review = {
-                  "event": "COMMENT",
-                  "body": "@copilot Automated review could not parse structured output.",
-                  "comments": [],
-              }
+              start = cleaned_content.find("{")
+              end = cleaned_content.rfind("}")
+              if start >= 0 and end > start:
+                  candidate = cleaned_content[start:end + 1]
+                  try:
+                      review = json.loads(candidate)
+                  except json.JSONDecodeError:
+                      print(f"Copilot CLI response is not valid JSON: {exc}")
+                      print(cleaned_content[:1000])
+                      review = {
+                          "event": "COMMENT",
+                          "body": "@copilot Automated review could not parse structured output.",
+                          "comments": [],
+                      }
+              else:
+                  print(f"Copilot CLI response is not valid JSON: {exc}")
+                  print(cleaned_content[:1000])
+                  review = {
+                      "event": "COMMENT",
+                      "body": "@copilot Automated review could not parse structured output.",
+                      "comments": [],
+                  }
 
           review["body"] = ensure_prefix(review.get("body", ""))
           for comment in review.get("comments", []):
