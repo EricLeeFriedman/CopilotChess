@@ -7,153 +7,84 @@ on:
       - 'src/**'
       - 'build.ps1'
       - 'docs/**'
+      - '.github/agents/**'
+      - '.github/workflows/pr-review.yml'
       - 'AGENTS.md'
       - 'README.md'
 
 permissions:
   contents: read
   pull-requests: write
-  models: read
 
 jobs:
   review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-      - name: Adversarial Review
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Build review input
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 << 'PYEOF'
-          import os, json, sys, urllib.request, urllib.error
+          import os, urllib.request
 
-          GITHUB_API   = "https://api.github.com"
-          MODELS_API   = "https://models.inference.ai.azure.com"
-          MODEL        = "gpt-4o"
-          MAX_DIFF_CHARS = 24000  # truncate large diffs; keeps token budget safe
+          GITHUB_API = "https://api.github.com"
 
-          token    = os.environ["GITHUB_TOKEN"]
+          token = os.environ["GITHUB_TOKEN"]
           pr_number = os.environ["PR_NUMBER"]
-          repo     = os.environ["REPO"]
-          head_sha = os.environ["HEAD_SHA"]
+          repo = os.environ["REPO"]
 
-          # ── helpers ────────────────────────────────────────────────────────────
+          req = urllib.request.Request(
+              f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github.diff",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
 
-          def gh_get(path, accept="application/vnd.github+json"):
-              req = urllib.request.Request(
-                  f"{GITHUB_API}{path}",
-                  headers={
-                      "Authorization": f"Bearer {token}",
-                      "Accept": accept,
-                      "X-GitHub-Api-Version": "2022-11-28",
-                  },
-              )
-              with urllib.request.urlopen(req) as r:
-                  return r.read()
-
-          def gh_post(path, data):
-              payload = json.dumps(data).encode()
-              req = urllib.request.Request(
-                  f"{GITHUB_API}{path}",
-                  data=payload,
-                  headers={
-                      "Authorization": f"Bearer {token}",
-                      "Accept": "application/vnd.github+json",
-                      "Content-Type": "application/json",
-                      "X-GitHub-Api-Version": "2022-11-28",
-                  },
-                  method="POST",
-              )
-              with urllib.request.urlopen(req) as r:
-                  return json.loads(r.read())
-
-          # ── 1. fetch PR diff ───────────────────────────────────────────────────
-
-          diff_raw = gh_get(
-              f"/repos/{repo}/pulls/{pr_number}",
-              accept="application/vnd.github.diff",
-          ).decode("utf-8", errors="replace")
+          with urllib.request.urlopen(req) as response:
+              diff_raw = response.read().decode("utf-8", errors="replace")
 
           if not diff_raw.strip():
-              print("Empty diff — skipping review.")
-              sys.exit(0)
+              raise SystemExit("Pull request diff is empty.")
 
-          # truncate at a line boundary so we never break mid-line
-          if len(diff_raw) > MAX_DIFF_CHARS:
-              truncated = diff_raw[:MAX_DIFF_CHARS]
-              last_nl = truncated.rfind("\n")
-              if last_nl > 0:
-                  truncated = truncated[:last_nl]
-              diff_raw = truncated + "\n\n[diff truncated due to size]\n"
+          with open("pr.diff", "w", encoding="utf-8", newline="\n") as fh:
+              fh.write(diff_raw)
+          PYEOF
 
-          # ── 1b. strip workflow files from diff ────────────────────────────────
-          # The PR may touch .github/workflows/ alongside reviewed paths; exclude
-          # those sections so the LLM never comments on workflow files.
+      - name: Run Copilot review agent
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          if [ -z "${COPILOT_GITHUB_TOKEN}" ]; then
+            echo "Missing Copilot CLI auth secret. Add either COPILOT_REVIEW_TOKEN or PERSONAL_ACCESS_TOKEN as a repository secret." >&2
+            echo "The value must be a fine-grained PAT for a GitHub user with Copilot access, and it must include the 'Copilot Requests' permission." >&2
+            exit 1
+          fi
 
-          def filter_diff_sections(diff_text, exclude_prefix=".github/workflows/"):
-              sections = []
-              current = []
-              skip = False
-              for line in diff_text.splitlines(keepends=True):
-                  if line.startswith("diff --git "):
-                      if current and not skip:
-                          sections.extend(current)
-                      current = [line]
-                      skip = exclude_prefix in line
-                  else:
-                      current.append(line)
-              if current and not skip:
-                  sections.extend(current)
-              return "".join(sections)
+          cat << 'EOF' > copilot-review-prompt.txt
+          Review the pull request diff stored in `pr.diff`.
 
-          diff_raw = filter_diff_sections(diff_raw)
+          Use the repository's `cpp-pr-review` custom agent behavior and inspect repository files as needed.
 
-          if not diff_raw.strip():
-              print("No reviewable files in diff after filtering — skipping review.")
-              sys.exit(0)
-
-          # ── 2. load project context ────────────────────────────────────────────
-
-          context_text = ""
-          for ctx_path in [".github/copilot-instructions.md", "AGENTS.md"]:
-              try:
-                  with open(ctx_path, encoding="utf-8") as fh:
-                      context_text += f"\n\n--- {ctx_path} ---\n{fh.read()}"
-              except FileNotFoundError:
-                  pass
-
-          # ── 3. build prompt ────────────────────────────────────────────────────
-
-          system_prompt = """\
-          You are a strict adversarial code reviewer for a C++ chess project. Find real
-          bugs, logic errors, and constraint violations — not style issues.
-
-          Check specifically for:
-          - Bugs and logic errors.
-          - Use of built-in integer types (int, char, unsigned, size_t, long, etc.)
-            instead of the project's sized types (int8/uint8/int16/uint16/int32/uint32/
-            int64/uint64 from src/types.h). bool and void* are allowed.
-          - Object-oriented patterns (classes with member functions, inheritance,
-            virtual dispatch) where C-style structs/functions are required.
-          - Use of C standard library functions (malloc, free, printf, strlen, memcpy,
-            etc.) or STL containers (std::vector, std::string, std::map, etc.).
-          - Runtime dynamic memory allocation (new / delete / malloc / free).
-          - Missing or incorrect doc updates per the AGENTS.md ownership map.
-          - Test coverage gaps: missing *_tests.cpp files or missing RunXxxTests calls
-            in main.cpp's RunTests().
-          - Unsafe or incorrect use of the memory arena API.
-          - Any other violation of the constraints in copilot-instructions.md.
-
-          Do NOT comment on files under .github/workflows/ — those are excluded
-          from review scope.
-
-          Output ONLY valid JSON (no markdown, no code fences) matching this schema exactly:
+          Output ONLY valid JSON matching this schema exactly:
           {
             "event": "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
             "body": "@copilot <overall summary>",
@@ -171,128 +102,116 @@ jobs:
           - Use REQUEST_CHANGES when you find real issues.
           - Use APPROVE only when the change is clearly correct and complete.
           - Use COMMENT for observations that do not require a change.
-          - Only include inline comments for findings tied to a specific file and line
-            that is present in the diff.
+          - Only include inline comments for findings tied to a specific file and line that is present in the diff.
           - The "comments" array may be empty.
-          - Do not include style-only observations. High signal-to-noise ratio only.\
-          """
+          - Do not include markdown fences or any prose before or after the JSON.
+          EOF
 
-          user_prompt = (
-              f"PROJECT CONTEXT:\n{context_text}\n\n"
-              f"---\n\nPULL REQUEST DIFF:\n{diff_raw}"
-          )
+          cat copilot-review-prompt.txt | copilot --agent=cpp-pr-review -s --no-ask-user --add-dir="$PWD" > copilot-review-output.txt
 
-          # ── 4. call GitHub Models API ──────────────────────────────────────────
+      - name: Post GitHub review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
 
-          models_payload = {
-              "model": MODEL,
-              "messages": [
-                  {"role": "system", "content": system_prompt},
-                  {"role": "user",   "content": user_prompt},
-              ],
-              "temperature": 0.2,
-              "max_tokens": 2000,
-              "response_format": {"type": "json_object"},
-          }
+          GITHUB_API = "https://api.github.com"
 
-          models_req = urllib.request.Request(
-              f"{MODELS_API}/chat/completions",
-              data=json.dumps(models_payload).encode(),
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json",
-              },
-              method="POST",
-          )
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+          head_sha = os.environ["HEAD_SHA"]
 
-          try:
-              with urllib.request.urlopen(models_req) as r:
-                  models_resp = json.loads(r.read())
-          except urllib.error.HTTPError as e:
-              print(f"Models API error {e.code}: {e.read().decode()}", file=sys.stderr)
-              sys.exit(1)
+          def gh_post(path, data):
+              payload = json.dumps(data).encode()
+              req = urllib.request.Request(
+                  f"{GITHUB_API}{path}",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req) as response:
+                  return json.loads(response.read())
 
-          raw_content = models_resp["choices"][0]["message"]["content"]
+          def ensure_prefix(text):
+              if isinstance(text, str) and text.startswith("@copilot "):
+                  return text
+              if isinstance(text, str) and text.startswith("@copilot"):
+                  return text
+              return "@copilot " + (text if isinstance(text, str) else "")
 
-          # ── 5. parse LLM response ──────────────────────────────────────────────
+          raw_content = open("copilot-review-output.txt", encoding="utf-8").read().strip()
+          if raw_content.startswith("```"):
+              lines = raw_content.splitlines()
+              if len(lines) >= 3:
+                  raw_content = "\n".join(lines[1:-1]).strip()
 
           try:
               review = json.loads(raw_content)
-          except json.JSONDecodeError as e:
-              print(f"LLM response is not valid JSON: {e}", file=sys.stderr)
-              print(f"Raw: {raw_content[:500]}", file=sys.stderr)
+          except json.JSONDecodeError as exc:
+              print(f"Copilot CLI response is not valid JSON: {exc}")
+              print(raw_content[:1000])
               review = {
                   "event": "COMMENT",
                   "body": "@copilot Automated review could not parse structured output.",
                   "comments": [],
               }
 
-          # Guarantee @copilot prefix on every body field
-          def ensure_prefix(text):
-              if isinstance(text, str) and text.startswith("@copilot"):
-                  return text
-              return "@copilot " + (text if isinstance(text, str) else "")
-
           review["body"] = ensure_prefix(review.get("body", ""))
-          for c in review.get("comments", []):
-              c["body"] = ensure_prefix(c.get("body", ""))
+          for comment in review.get("comments", []):
+              comment["body"] = ensure_prefix(comment.get("body", ""))
 
           if review.get("event") not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
               review["event"] = "COMMENT"
 
-          # GitHub Actions' default GITHUB_TOKEN is not allowed to APPROVE PRs.
-          # Convert approvals into comments to avoid 422 failures.
           if review.get("event") == "APPROVE":
               review["event"] = "COMMENT"
               review["body"] = ensure_prefix(
-                  (review.get("body") or "") + "\n\n(Approval converted to COMMENT: Actions cannot approve PRs.)"
+                  (review.get("body") or "") + "\n\n(Approval converted to COMMENT: Actions cannot approve pull requests.)"
               )
 
-          # ── 6. build and post GitHub PR review ────────────────────────────────
-
           inline_comments = []
-          for c in review.get("comments", []):
+          for comment in review.get("comments", []):
               try:
-                  path = str(c["path"])
-                  # Never post inline comments on workflow files, even if LLM ignores
-                  # the system-prompt instruction
-                  if path.startswith(".github/workflows/"):
-                      continue
                   inline_comments.append({
-                      "path": path,
-                      "line": int(c["line"]),
+                      "path": str(comment["path"]),
+                      "line": int(comment["line"]),
                       "side": "RIGHT",
-                      "body": str(c["body"]),
+                      "body": str(comment["body"]),
                   })
               except (KeyError, ValueError, TypeError):
-                  pass  # skip malformed entries
+                  pass
 
           review_payload = {
               "commit_id": head_sha,
-              "body":      review["body"],
-              "event":     review["event"],
-              "comments":  inline_comments,
+              "body": review["body"],
+              "event": review["event"],
+              "comments": inline_comments,
           }
 
           try:
               result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
-              print(f"Posted review {result.get('id')} — event={review['event']}, "
-                    f"inline_comments={len(inline_comments)}")
-          except urllib.error.HTTPError as e:
-              err_body = e.read().decode()
-              print(f"GitHub API error {e.code}: {err_body}", file=sys.stderr)
-              if inline_comments:
-                  # Inline comments may reference lines not in the diff; retry without them
-                  print("Retrying without inline comments…", file=sys.stderr)
-                  review_payload["comments"] = []
-                  try:
-                      result = gh_post(
-                          f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload
-                      )
-                      print(f"Posted review {result.get('id')} (no inline comments)")
-                  except urllib.error.HTTPError as e2:
-                      print(f"Retry failed {e2.code}: {e2.read().decode()}", file=sys.stderr)
-                      sys.exit(1)
-              else:
-                  sys.exit(1)
+              print(f"Posted review {result.get('id')} with {len(inline_comments)} inline comments.")
+          except urllib.error.HTTPError as exc:
+              error_body = exc.read().decode()
+              print(f"GitHub API error {exc.code}: {error_body}")
+              if not inline_comments:
+                  raise
+
+              print("Retrying without inline comments.")
+              review_payload["comments"] = []
+              result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
+              print(f"Posted review {result.get('id')} without inline comments.")
           PYEOF

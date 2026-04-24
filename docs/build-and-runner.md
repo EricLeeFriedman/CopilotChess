@@ -52,9 +52,9 @@ GitHub Copilot cloud-agent Windows environments require repository administrator
 
 ## Workflows
 
-The repository contains two GitHub Actions workflows:
+The primary GitHub Actions workflow for code validation is:
 
 | Workflow | File | Runner | Purpose |
 |---|---|---|---|
 | Build | `.github/workflows/build.yml` | `windows-latest` | Compile and run the built-in test suite on every push/PR targeting `main`. Requires the Windows MSVC toolchain. |
-| PR Adversarial Review | `.github/workflows/pr-review.yml` | `ubuntu-latest` | Post an automated adversarial code review on every pull request. Uses the GitHub Models API with `GITHUB_TOKEN` — no external secrets required. Intentionally runs on `ubuntu-latest` because no Windows build toolchain is needed. |
+| PR Adversarial Review | `.github/workflows/pr-review.yml` | `ubuntu-latest` | Installs GitHub Copilot CLI, invokes the repository's `cpp-pr-review` custom agent against the PR diff, and posts the resulting GitHub review for same-repository pull requests. Requires either a `COPILOT_REVIEW_TOKEN` or `PERSONAL_ACCESS_TOKEN` repository secret containing a fine-grained PAT with `Copilot Requests` permission. |
