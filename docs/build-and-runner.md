@@ -57,4 +57,4 @@ The primary GitHub Actions workflow for code validation is:
 | Workflow | File | Runner | Purpose |
 |---|---|---|---|
 | Build | `.github/workflows/build.yml` | `windows-latest` | Compile and run the built-in test suite on every push/PR targeting `main`. Requires the Windows MSVC toolchain. |
-| PR Adversarial Review | `.github/workflows/pr-review.yml` | `ubuntu-latest` | Runs `github/copilot-actions@v1` on qualifying pull requests and delegates review behavior to `.github/agents/cpp-pr-review.agent.md`. |
+| PR Adversarial Review | `.github/workflows/pr-review.yml` | `ubuntu-latest` | Installs GitHub Copilot CLI, invokes the repository's `cpp-pr-review` custom agent against the PR diff, and posts the resulting GitHub review for same-repository pull requests. Requires a `COPILOT_REVIEW_TOKEN` repository secret containing a fine-grained PAT with `Copilot Requests` permission. |

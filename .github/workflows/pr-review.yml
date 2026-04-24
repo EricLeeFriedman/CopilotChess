@@ -18,13 +18,199 @@ permissions:
 
 jobs:
   review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Adversarial Review
-        uses: github/copilot-actions@v1
         with:
-          agent: .github/agents/cpp-pr-review.agent.md
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Build review input
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import os, urllib.request
+
+          GITHUB_API = "https://api.github.com"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+
+          req = urllib.request.Request(
+              f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github.diff",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+
+          with urllib.request.urlopen(req) as response:
+              diff_raw = response.read().decode("utf-8", errors="replace")
+
+          if not diff_raw.strip():
+              raise SystemExit("Pull request diff is empty.")
+
+          with open("pr.diff", "w", encoding="utf-8", newline="\n") as fh:
+              fh.write(diff_raw)
+          PYEOF
+
+      - name: Run Copilot review agent
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}
+        run: |
+          if [ -z "${COPILOT_GITHUB_TOKEN}" ]; then
+            echo "Missing repository secret COPILOT_REVIEW_TOKEN. Create a fine-grained PAT with the 'Copilot Requests' permission and store it in that secret." >&2
+            exit 1
+          fi
+
+          cat << 'EOF' > copilot-review-prompt.txt
+          Review the pull request diff stored in `pr.diff`.
+
+          Use the repository's `cpp-pr-review` custom agent behavior and inspect repository files as needed.
+
+          Output ONLY valid JSON matching this schema exactly:
+          {
+            "event": "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
+            "body": "@copilot <overall summary>",
+            "comments": [
+              {
+                "path": "<file path relative to repo root>",
+                "line": <positive integer — line in the new file visible in the diff>,
+                "body": "@copilot <specific finding>"
+              }
+            ]
+          }
+
+          Rules:
+          - Every "body" value MUST start with "@copilot ".
+          - Use REQUEST_CHANGES when you find real issues.
+          - Use APPROVE only when the change is clearly correct and complete.
+          - Use COMMENT for observations that do not require a change.
+          - Only include inline comments for findings tied to a specific file and line that is present in the diff.
+          - The "comments" array may be empty.
+          - Do not include markdown fences or any prose before or after the JSON.
+          EOF
+
+          cat copilot-review-prompt.txt | copilot --agent=cpp-pr-review -s --no-ask-user --add-dir="$PWD" > copilot-review-output.txt
+
+      - name: Post GitHub review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          GITHUB_API = "https://api.github.com"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+          head_sha = os.environ["HEAD_SHA"]
+
+          def gh_post(path, data):
+              payload = json.dumps(data).encode()
+              req = urllib.request.Request(
+                  f"{GITHUB_API}{path}",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req) as response:
+                  return json.loads(response.read())
+
+          def ensure_prefix(text):
+              if isinstance(text, str) and text.startswith("@copilot "):
+                  return text
+              if isinstance(text, str) and text.startswith("@copilot"):
+                  return text
+              return "@copilot " + (text if isinstance(text, str) else "")
+
+          raw_content = open("copilot-review-output.txt", encoding="utf-8").read().strip()
+          if raw_content.startswith("```"):
+              lines = raw_content.splitlines()
+              if len(lines) >= 3:
+                  raw_content = "\n".join(lines[1:-1]).strip()
+
+          try:
+              review = json.loads(raw_content)
+          except json.JSONDecodeError as exc:
+              print(f"Copilot CLI response is not valid JSON: {exc}")
+              print(raw_content[:1000])
+              review = {
+                  "event": "COMMENT",
+                  "body": "@copilot Automated review could not parse structured output.",
+                  "comments": [],
+              }
+
+          review["body"] = ensure_prefix(review.get("body", ""))
+          for comment in review.get("comments", []):
+              comment["body"] = ensure_prefix(comment.get("body", ""))
+
+          if review.get("event") not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
+              review["event"] = "COMMENT"
+
+          if review.get("event") == "APPROVE":
+              review["event"] = "COMMENT"
+              review["body"] = ensure_prefix(
+                  (review.get("body") or "") + "\n\n(Approval converted to COMMENT: Actions cannot approve pull requests.)"
+              )
+
+          inline_comments = []
+          for comment in review.get("comments", []):
+              try:
+                  inline_comments.append({
+                      "path": str(comment["path"]),
+                      "line": int(comment["line"]),
+                      "side": "RIGHT",
+                      "body": str(comment["body"]),
+                  })
+              except (KeyError, ValueError, TypeError):
+                  pass
+
+          review_payload = {
+              "commit_id": head_sha,
+              "body": review["body"],
+              "event": review["event"],
+              "comments": inline_comments,
+          }
+
+          try:
+              result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
+              print(f"Posted review {result.get('id')} with {len(inline_comments)} inline comments.")
+          except urllib.error.HTTPError as exc:
+              error_body = exc.read().decode()
+              print(f"GitHub API error {exc.code}: {error_body}")
+              if not inline_comments:
+                  raise
+
+              print("Retrying without inline comments.")
+              review_payload["comments"] = []
+              result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
+              print(f"Posted review {result.get('id')} without inline comments.")
+          PYEOF

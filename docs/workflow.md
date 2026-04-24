@@ -23,7 +23,7 @@ This repository is designed so that work can move from intent to merged pull req
 - Agents should review their own work before asking for additional review.
 - Pull requests should call out risks, validation, and any follow-up work explicitly.
 - Review comments that represent durable rules should be promoted into repository docs or automation.
-- Automated PR review is routed through `.github/workflows/pr-review.yml`, which invokes `.github/agents/cpp-pr-review.agent.md` for the repository's adversarial C/C++ review pass.
+- Automated PR review is routed through `.github/workflows/pr-review.yml`, which installs GitHub Copilot CLI in Actions, invokes the repository's `.github/agents/cpp-pr-review.agent.md` custom agent, and converts its structured output into a GitHub pull request review.
 - Automated review findings should stay high signal-to-noise, with inline comments used only when they map to a specific changed line.
 - Automated review findings intended for Copilot follow-up — both the overall summary and every inline comment — should be prefixed with `@copilot`. These prefixes make each finding an explicit directed action item that the Copilot coding agent picks up automatically on its next pass.
 
