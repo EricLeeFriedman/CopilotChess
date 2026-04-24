@@ -71,10 +71,11 @@ jobs:
 
       - name: Run Copilot review agent
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           if [ -z "${COPILOT_GITHUB_TOKEN}" ]; then
-            echo "Missing repository secret COPILOT_REVIEW_TOKEN. Create a fine-grained PAT with the 'Copilot Requests' permission and store it in that secret." >&2
+            echo "Missing Copilot CLI auth secret. Add either COPILOT_REVIEW_TOKEN or PERSONAL_ACCESS_TOKEN as a repository secret." >&2
+            echo "The value must be a fine-grained PAT for a GitHub user with Copilot access, and it must include the 'Copilot Requests' permission." >&2
             exit 1
           fi
 
