@@ -338,3 +338,55 @@ void ApplyMove(GameState* gs, const Move* move){
     // Advance turn.
     gs->side_to_move = (gs->side_to_move == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
 }
+
+bool IsInCheck(const Board* board, Color color)
+{
+    ASSERT(board);
+    ASSERT(color != COLOR_NONE);
+
+    // Locate the king for the given color.
+    int8 king_rank = -1;
+    int8 king_file = -1;
+    for (int32 rank = 0; rank < 8; ++rank)
+    {
+        for (int32 file = 0; file < 8; ++file)
+        {
+            const Square sq = board->squares[rank][file];
+            if (sq.piece == PIECE_KING && sq.color == color)
+            {
+                king_rank = (int8)rank;
+                king_file = (int8)file;
+            }
+        }
+    }
+
+    // No king found — cannot be in check.
+    if (king_rank == -1) return false;
+
+    // Build a temporary game state from the enemy's perspective to reuse
+    // the existing move generators.
+    const Color enemy = (color == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
+    GameState temp_gs;
+    temp_gs.board           = *board;
+    temp_gs.side_to_move    = enemy;
+    temp_gs.en_passant_rank = -1;
+    temp_gs.en_passant_file = -1;
+
+    MoveList attacks = {};
+    GeneratePawnMoves  (&temp_gs, &attacks);
+    GenerateKnightMoves(&temp_gs, &attacks);
+    GenerateRookMoves  (&temp_gs, &attacks);
+    GenerateBishopMoves(&temp_gs, &attacks);
+    GenerateQueenMoves (&temp_gs, &attacks);
+
+    // Check whether any enemy move targets the king's square.
+    for (int32 i = 0; i < attacks.count; ++i)
+    {
+        if (attacks.moves[i].to_rank == king_rank &&
+            attacks.moves[i].to_file == king_file)
+        {
+            return true;
+        }
+    }
+    return false;
+}

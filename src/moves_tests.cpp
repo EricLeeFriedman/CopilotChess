@@ -773,6 +773,171 @@ static bool TestQueen_CapturesEnemy(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// IsInCheck: not in check — king on open board with no enemy pieces.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_NotInCheck(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e1 (rank 0, file 4), no enemy pieces.
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+
+    if (IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IsInCheck: pawn check — enemy pawn diagonally in front of king.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_ByPawn(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e4 (rank 3, file 4); black pawn on f5 (rank 4, file 5).
+    // A black pawn on f5 attacks e4 diagonally (black moves downward, attacks rank 3).
+    gs->board.squares[3][4] = { PIECE_KING,  COLOR_WHITE };
+    gs->board.squares[4][5] = { PIECE_PAWN,  COLOR_BLACK };
+
+    if (!IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IsInCheck: knight check — enemy knight attacks the king's square.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_ByKnight(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e4 (rank 3, file 4); black knight on d6 (rank 5, file 3).
+    // Knight on d6 attacks e4 via the (-2, +1) offset.
+    gs->board.squares[3][4] = { PIECE_KING,   COLOR_WHITE };
+    gs->board.squares[5][3] = { PIECE_KNIGHT, COLOR_BLACK };
+
+    if (!IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IsInCheck: bishop check — enemy bishop on same diagonal.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_ByBishop(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e1 (rank 0, file 4); black bishop on b4 (rank 3, file 1).
+    // They share the NW-SE diagonal.
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE };
+    gs->board.squares[3][1] = { PIECE_BISHOP, COLOR_BLACK };
+
+    if (!IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IsInCheck: rook check — enemy rook on the same file.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_ByRook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e1 (rank 0, file 4); black rook on e8 (rank 7, file 4).
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK, COLOR_BLACK };
+
+    if (!IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IsInCheck: queen check — enemy queen attacks along a rank.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_ByQueen(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e1 (rank 0, file 4); black queen on a1 (rank 0, file 0).
+    gs->board.squares[0][4] = { PIECE_KING,  COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_QUEEN, COLOR_BLACK };
+
+    if (!IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// IsInCheck: piece blocks the attack — king is not in check.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_BlockedByPiece(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e1 (rank 0, file 4); white pawn on e4 (rank 3, file 4)
+    // blocking a black rook on e8 (rank 7, file 4).
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[3][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK, COLOR_BLACK };
+
+    if (IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -806,6 +971,14 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestQueen_OpenBoard);
     RUN_TEST(TestQueen_BlockedByFriendly);
     RUN_TEST(TestQueen_CapturesEnemy);
+
+    RUN_TEST(TestIsInCheck_NotInCheck);
+    RUN_TEST(TestIsInCheck_ByPawn);
+    RUN_TEST(TestIsInCheck_ByKnight);
+    RUN_TEST(TestIsInCheck_ByBishop);
+    RUN_TEST(TestIsInCheck_ByRook);
+    RUN_TEST(TestIsInCheck_ByQueen);
+    RUN_TEST(TestIsInCheck_BlockedByPiece);
 
     return true;
 }
