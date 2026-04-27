@@ -65,6 +65,35 @@ Indexing convention: `squares[rank][file]` where rank 0 is White's back rank (ra
 
 Own legal move generation, check detection, checkmate detection, and any supporting rule validation.
 
+#### Move Representation
+
+`src/moves.h` defines the core types used for move generation and application:
+
+- **`Move`** — a single candidate move. Fields: `from_rank`, `from_file`, `to_rank`, `to_file`, `promotion` (`PIECE_NONE` or `PIECE_QUEEN` for auto-promotion), `is_en_passant`.
+- **`MoveList`** — a fixed-size array of up to `MAX_MOVES_PER_POSITION` (256) `Move` values plus a `count`. Callers zero-initialize and pass a pointer; `GeneratePawnMoves` appends without clearing.
+- **`GameState`** — all mutable state needed between moves: `Board board`, `Color side_to_move`, and `int8 en_passant_rank` / `int8 en_passant_file` (-1 when no en passant is available; otherwise the coordinates of the target square created by the most recent double pawn push).
+
+#### Pawn Move Generation
+
+`GeneratePawnMoves(const GameState*, Color, MoveList*)` appends all candidate pawn moves for the given color:
+
+- **Single push** — one square forward if the destination is empty.
+- **Double push** — two squares forward from the starting rank (rank 1 for White, rank 6 for Black) when both intervening squares are empty.
+- **Diagonal capture** — one square diagonally forward when an enemy piece occupies that square.
+- **En passant** — diagonal forward capture onto `(en_passant_rank, en_passant_file)` when set. The `is_en_passant` flag is set on the resulting `Move`.
+- **Promotion** — any move that reaches the back rank (rank 7 for White, rank 0 for Black) sets `promotion = PIECE_QUEEN`.
+
+#### Move Application
+
+`ApplyMove(GameState*, const Move*)` mutates the game state:
+
+1. Clears the en passant target.
+2. For en passant captures, removes the captured pawn from `(from_rank, to_file)`.
+3. Moves the piece from source to destination.
+4. If `promotion != PIECE_NONE`, replaces the pawn with the promoted piece.
+5. If the move is a double pawn push, sets the en passant target to the skipped square.
+6. Advances `side_to_move`.
+
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.
