@@ -333,13 +333,14 @@ jobs:
 
       - name: Ping Copilot to address automated findings
         if: steps.check_rounds.outputs.skip_review != 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           python3 << 'PYEOF'
-          import json, os, urllib.request
+          import json, os, urllib.error, urllib.request
 
           token = os.environ["GH_TOKEN"]
           pr = os.environ["PR_NUMBER"]
@@ -362,6 +363,11 @@ jobs:
             },
             method="POST",
           )
-          with urllib.request.urlopen(req) as resp:
-            print(resp.status)
+          try:
+            with urllib.request.urlopen(req) as resp:
+              print(resp.status)
+          except urllib.error.HTTPError as exc:
+            print(f"Ping Copilot failed (HTTP {exc.code}): {exc.read().decode()}")
+            print("Ensure PERSONAL_ACCESS_TOKEN has 'issues: write' (or 'repo') permission.")
+            raise
           PYEOF
