@@ -9,9 +9,17 @@ bool RendererInit(RendererState* rs, Arena* arena, int32 width, int32 height)
     ASSERT(arena);
     ASSERT(width > 0 && height > 0);
 
+    uint64 pixel_count    = (uint64)width * (uint64)height;
+    uint64 byte_size      = pixel_count * sizeof(Pixel);
+    uint64 aligned_offset = AlignUp(arena->offset, alignof(Pixel));
+
+    // Return false (recoverable) if the arena lacks space for the pixel buffer.
+    if (aligned_offset > arena->size || byte_size > arena->size - aligned_offset)
+        return false;
+
     rs->width  = width;
     rs->height = height;
-    rs->pixels = ArenaPushArray(arena, Pixel, (uint64)width * (uint64)height);
+    rs->pixels = ArenaPushArray(arena, Pixel, pixel_count);
 
     rs->bmi                         = {};
     rs->bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);

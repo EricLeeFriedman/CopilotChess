@@ -229,6 +229,21 @@ static bool TestRenderer_DrawRect_ZeroSize(void)
     return true;
 }
 
+static bool TestRenderer_InitFailsOnArenaExhaustion(void)
+{
+    // Build a tiny arena backed by a stack buffer that is too small for any pixel buffer.
+    uint8  tiny_buf[4] = {};
+    Arena  tiny_arena  = {};
+    tiny_arena.base   = tiny_buf;
+    tiny_arena.size   = sizeof(tiny_buf);
+    tiny_arena.offset = 0;
+
+    RendererState rs = {};
+    bool result = RendererInit(&rs, &tiny_arena, 64, 64); // needs 64*64*4 = 16 384 bytes
+
+    return result == false && rs.pixels == 0;
+}
+
 bool RunRendererTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -242,6 +257,7 @@ bool RunRendererTests(AppMemory* memory)
     RUN_TEST(TestRenderer_DrawRect_ClipsBottom);
     RUN_TEST(TestRenderer_DrawRect_FullyOutOfBounds);
     RUN_TEST(TestRenderer_DrawRect_ZeroSize);
+    RUN_TEST(TestRenderer_InitFailsOnArenaExhaustion);
 
     return true;
 }
