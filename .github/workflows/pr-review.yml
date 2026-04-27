@@ -346,8 +346,11 @@ jobs:
                   if val is None:
                       parsed[key] = []
                   elif not isinstance(val, list):
-                      print(f"WARNING: '{key}' is not a list (got {type(val).__name__}). Treating as empty.")
-                      parsed[key] = []
+                      print(
+                          f"Schema error: '{key}' is not a list (got {type(val).__name__}). "
+                          "Falling back to REQUEST_CHANGES to avoid silently dropping findings."
+                      )
+                      return dict(FALLBACK_REVIEW)
 
               return parsed
 
