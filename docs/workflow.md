@@ -30,6 +30,47 @@ This repository is designed so that work can move from intent to merged pull req
 - Automated review findings should stay high signal-to-noise, with inline comments used only when they map to a specific changed line.
 - Automated review findings intended for Copilot follow-up — both the overall summary and every inline comment — should be prefixed with `@copilot`. These prefixes make each finding an explicit directed action item that the Copilot coding agent picks up automatically on its next pass.
 
+### Structured Review Output Schema
+
+The review agent must return a JSON object with the following fields:
+
+```json
+{
+  "event": "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
+  "body": "@copilot <overall summary>",
+  "blocking": [
+    {
+      "path": "<file path relative to repo root>",
+      "line": <line number in new file>,
+      "body": "@copilot <required fix>"
+    }
+  ],
+  "comments": [
+    {
+      "path": "<file path relative to repo root>",
+      "line": <line number in new file>,
+      "body": "@copilot <optional observation>"
+    }
+  ]
+}
+```
+
+**`blocking`** is the machine-checkable list of required changes. Use it for:
+- Real bugs
+- Architecture or chess-rule violations
+- Missing required tests
+- Missing required doc updates
+
+**`comments`** is for optional, non-blocking observations that do not require any change.
+
+The workflow enforces the following rules regardless of the agent's top-level `event` field:
+1. If `blocking` is non-empty → the review is posted as `REQUEST_CHANGES`.
+2. If `blocking` is empty and `event` is `REQUEST_CHANGES` → the review is still posted as `REQUEST_CHANGES` (conservative: a mismatch is logged as a warning and the blocking direction is kept).
+3. If the agent output cannot be parsed → the review is posted as `REQUEST_CHANGES` with an error message instead of silently passing as `COMMENT`.
+4. `COMMENT` is reserved for reviews where `blocking` is empty and `event` is `COMMENT` or `APPROVE` (approvals are converted to `COMMENT`).
+
+This means a mismatch — where the agent body describes real bugs but sets `event: "COMMENT"` — can no longer silently slip through as a non-blocking review.
+
 ## Retrospective Workflow
 
 A dedicated **Retrospective Analysis** workflow (`.github/workflows/retrospective.yml`) runs a meta-improvement pass over a merged or closed pull request to identify why the automated system struggled and to propose concrete improvements.
