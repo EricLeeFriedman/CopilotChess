@@ -15,6 +15,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   review:
@@ -35,7 +36,203 @@ jobs:
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
+      - name: Classify PR
+        id: classify_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          GITHUB_API = "https://api.github.com"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+
+          def gh_get_paged(path):
+              results = []
+              page = 1
+              while True:
+                  sep = "&" if "?" in path else "?"
+                  req = urllib.request.Request(
+                      f"{GITHUB_API}{path}{sep}per_page=100&page={page}",
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/vnd.github+json",
+                          "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                  )
+                  with urllib.request.urlopen(req) as response:
+                      page_data = json.loads(response.read())
+                  if not page_data:
+                      break
+                  results.extend(page_data)
+                  if len(page_data) < 100:
+                      break
+                  page += 1
+              return results
+
+          files = gh_get_paged(f"/repos/{repo}/pulls/{pr_number}/files")
+          changed_paths = [f["filename"] for f in files]
+
+          # A PR is a "code PR" if it touches src/ or build.ps1.
+          # Everything else (docs/, .github/**, AGENTS.md, README.md, etc.) is
+          # considered a process/workflow/docs change that does not require the
+          # C/C++ code review agent.
+          has_code = any(
+              p.startswith("src/") or p == "build.ps1"
+              for p in changed_paths
+          )
+          is_process_pr = not has_code
+
+          print(f"Changed files: {changed_paths}")
+          print(f"Has C/C++ code changes: {has_code}")
+          print(f"Is process-only PR: {is_process_pr}")
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a") as f:
+                  f.write(f"is_process_pr={'true' if is_process_pr else 'false'}\n")
+          PYEOF
+
+      - name: Check review round count
+        if: steps.classify_pr.outputs.is_process_pr != 'true'
+        id: check_rounds
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import urllib.request
+
+          GITHUB_API = "https://api.github.com"
+          MAX_ROUNDS = 7
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+
+          def gh_get_paged(path):
+              """Fetch all pages of a GitHub API list endpoint."""
+              results = []
+              page = 1
+              while True:
+                  sep = "&" if "?" in path else "?"
+                  req = urllib.request.Request(
+                      f"{GITHUB_API}{path}{sep}per_page=100&page={page}",
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/vnd.github+json",
+                          "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                  )
+                  with urllib.request.urlopen(req) as response:
+                      page_data = json.loads(response.read())
+                  if not page_data:
+                      break
+                  results.extend(page_data)
+                  if len(page_data) < 100:
+                      break
+                  page += 1
+              return results
+
+          reviews = gh_get_paged(f"/repos/{repo}/pulls/{pr_number}/reviews")
+          automated_count = sum(
+              1 for r in reviews
+              if isinstance(r.get("body"), str) and r["body"].startswith("@copilot")
+              and r.get("state") == "CHANGES_REQUESTED"
+              and r.get("user", {}).get("login") == "github-actions[bot]"
+          )
+          print(f"Automated review count: {automated_count}/{MAX_ROUNDS}")
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a") as f:
+                  if automated_count >= MAX_ROUNDS:
+                      f.write("skip_review=true\n")
+                  else:
+                      f.write("skip_review=false\n")
+                  f.write(f"round_count={automated_count}\n")
+          PYEOF
+
+      - name: Post round limit message
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          ROUND_COUNT: ${{ steps.check_rounds.outputs.round_count }}
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import urllib.request
+
+          GITHUB_API = "https://api.github.com"
+          LIMIT_SENTINEL = "Automated review has reached the maximum of 7 review/response rounds"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+          round_count = os.environ.get("ROUND_COUNT", "7")
+
+          # Check if the round-limit notice was already posted to avoid duplicate comments.
+          page = 1
+          already_posted = False
+          while True:
+              req = urllib.request.Request(
+                  f"{GITHUB_API}/repos/{repo}/issues/{pr_number}/comments?per_page=100&page={page}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(req) as response:
+                  comments = json.loads(response.read())
+              if any(LIMIT_SENTINEL in (c.get("body") or "") for c in comments):
+                  already_posted = True
+                  break
+              if len(comments) < 100:
+                  break
+              page += 1
+
+          if already_posted:
+              print("Round limit notice already posted; skipping duplicate.")
+          else:
+              body = (
+                  f"{LIMIT_SENTINEL} "
+                  f"({round_count} automated reviews posted) without fully resolving all findings. "
+                  "**Human intervention is required.** Please review the outstanding findings manually "
+                  "and address or dismiss them before merging. The automated review/respond cycle has "
+                  "been stopped for this pull request."
+              )
+
+              payload = json.dumps({"body": body}).encode()
+              req = urllib.request.Request(
+                  f"{GITHUB_API}/repos/{repo}/issues/{pr_number}/comments",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req) as response:
+                  result = json.loads(response.read())
+              print(f"Posted round limit message as comment {result.get('id')}.")
+          PYEOF
+
       - name: Build review input
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -70,6 +267,7 @@ jobs:
           PYEOF
 
       - name: Run Copilot review agent
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
@@ -88,28 +286,38 @@ jobs:
           {
             "event": "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
             "body": "@copilot <overall summary>",
+            "blocking": [
+              {
+                "path": "<file path relative to repo root>",
+                "line": <positive integer — line in the new file visible in the diff>,
+                "body": "@copilot <required fix>"
+              }
+            ],
             "comments": [
               {
                 "path": "<file path relative to repo root>",
                 "line": <positive integer — line in the new file visible in the diff>,
-                "body": "@copilot <specific finding>"
+                "body": "@copilot <optional observation>"
               }
             ]
           }
 
           Rules:
           - Every "body" value MUST start with "@copilot ".
-          - Use REQUEST_CHANGES when you find real issues.
-          - Use APPROVE only when the change is clearly correct and complete.
-          - Use COMMENT for observations that do not require a change.
-          - Only include inline comments for findings tied to a specific file and line that is present in the diff.
-          - The "comments" array may be empty.
+          - "blocking" is ONLY for findings that REQUIRE a fix: real bugs, architecture or chess-rule violations, missing required tests, and missing required doc updates. Set "event" to "REQUEST_CHANGES" when this array is non-empty.
+          - "comments" is ONLY for optional, non-blocking observations that do not require any change.
+          - Use APPROVE only when the change is clearly correct and complete with no blocking issues.
+          - Only include inline entries in "blocking" or "comments" for findings tied to a specific file and line that is present in the diff.
+          - Both arrays may be empty.
+          - The workflow enforces: if "blocking" is non-empty the review is posted as REQUEST_CHANGES regardless of "event". Keep "event" consistent with your arrays.
           - Do not include markdown fences or any prose before or after the JSON.
           EOF
 
           cat copilot-review-prompt.txt | copilot --agent=cpp-pr-review -s --no-ask-user --add-dir="$PWD" > copilot-review-output.txt
 
       - name: Post GitHub review
+        id: post_review
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -162,46 +370,157 @@ jobs:
               if len(lines) >= 3:
                   cleaned_content = "\n".join(lines[1:-1]).strip()
 
-          try:
-              review = json.loads(cleaned_content)
-          except json.JSONDecodeError as exc:
-              start = cleaned_content.find("{")
-              end = cleaned_content.rfind("}")
-              if start >= 0 and end > start:
-                  candidate = cleaned_content[start:end + 1]
-                  try:
-                      review = json.loads(candidate)
-                  except json.JSONDecodeError:
+          FALLBACK_REVIEW = {
+              "event": "REQUEST_CHANGES",
+              "body": "@copilot Automated review could not parse structured output. Manual inspection required.",
+              "blocking": [],
+              "comments": [],
+          }
+
+          def parse_review(text):
+              """Parse text as JSON and return a validated review dict.
+
+              Returns a fallback REQUEST_CHANGES dict on any parse or schema error.
+              """
+              try:
+                  parsed = json.loads(text)
+              except json.JSONDecodeError as exc:
+                  start = text.find("{")
+                  end = text.rfind("}")
+                  if start >= 0 and end > start:
+                      try:
+                          parsed = json.loads(text[start:end + 1])
+                      except json.JSONDecodeError:
+                          print(f"Copilot CLI response is not valid JSON: {exc}")
+                          print(text[:1000])
+                          return dict(FALLBACK_REVIEW)
+                  else:
                       print(f"Copilot CLI response is not valid JSON: {exc}")
-                      print(cleaned_content[:1000])
-                      review = {
-                          "event": "COMMENT",
-                          "body": "@copilot Automated review could not parse structured output.",
-                          "comments": [],
-                      }
-              else:
-                  print(f"Copilot CLI response is not valid JSON: {exc}")
-                  print(cleaned_content[:1000])
-                  review = {
-                      "event": "COMMENT",
-                      "body": "@copilot Automated review could not parse structured output.",
-                      "comments": [],
-                  }
+                      print(text[:1000])
+                      return dict(FALLBACK_REVIEW)
+
+              # Schema validation: must be a dict with list-typed blocking/comments.
+              if not isinstance(parsed, dict):
+                  print(f"Copilot CLI response is valid JSON but not an object (got {type(parsed).__name__}). Using fallback.")
+                  return dict(FALLBACK_REVIEW)
+
+              if "event" in parsed and not isinstance(parsed["event"], str):
+                  print(
+                      f"Schema error: 'event' is not a string (got {type(parsed['event']).__name__}). "
+                      "Falling back to REQUEST_CHANGES to avoid a TypeError on the event check."
+                  )
+                  return dict(FALLBACK_REVIEW)
+
+              for key in ("blocking", "comments"):
+                  if key not in parsed:
+                      print(
+                          f"Schema error: required key '{key}' is absent. "
+                          "Falling back to REQUEST_CHANGES to avoid silently dropping findings."
+                      )
+                      return dict(FALLBACK_REVIEW)
+                  if not isinstance(parsed[key], list):
+                      print(
+                          f"Schema error: '{key}' is not a list (got {type(parsed[key]).__name__}). "
+                          "Falling back to REQUEST_CHANGES to avoid silently dropping findings."
+                      )
+                      return dict(FALLBACK_REVIEW)
+
+              # Validate that every blocking entry is a dict with required fields and a
+              # convertible line value.  A malformed blocking entry is a schema error
+              # because silently dropping it would post a blocking review with no
+              # actionable inline finding attached.
+              for idx, entry in enumerate(parsed["blocking"]):
+                  if not isinstance(entry, dict):
+                      print(
+                          f"Schema error: blocking[{idx}] is not a dict "
+                          f"(got {type(entry).__name__}). Falling back to REQUEST_CHANGES."
+                      )
+                      return dict(FALLBACK_REVIEW)
+                  for required_key in ("path", "line", "body"):
+                      if required_key not in entry:
+                          print(
+                              f"Schema error: blocking[{idx}] is missing required key "
+                              f"'{required_key}'. Falling back to REQUEST_CHANGES."
+                          )
+                          return dict(FALLBACK_REVIEW)
+                  try:
+                      line_val = int(entry["line"])
+                  except (ValueError, TypeError):
+                      print(
+                          f"Schema error: blocking[{idx}]['line'] cannot be converted to int "
+                          f"(got {type(entry['line']).__name__}). Falling back to REQUEST_CHANGES."
+                      )
+                      return dict(FALLBACK_REVIEW)
+                  if line_val <= 0:
+                      print(
+                          f"Schema error: blocking[{idx}]['line'] must be a positive integer "
+                          f"(got {line_val}). Falling back to REQUEST_CHANGES."
+                      )
+                      return dict(FALLBACK_REVIEW)
+
+              return parsed
+
+          review = parse_review(cleaned_content)
 
           review["body"] = ensure_prefix(review.get("body", ""))
-          for comment in review.get("comments", []):
-              comment["body"] = ensure_prefix(comment.get("body", ""))
+          all_entries = list(review.get("blocking", [])) + list(review.get("comments", []))
+          for entry in all_entries:
+              if not isinstance(entry, dict):
+                  print(
+                      f"Schema error: list entry is not an object (got {type(entry).__name__}). "
+                      "Falling back to REQUEST_CHANGES."
+                  )
+                  review = dict(FALLBACK_REVIEW)
+                  break
+              entry["body"] = ensure_prefix(entry.get("body", ""))
 
-          if review.get("event") not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
-              review["event"] = "COMMENT"
+          # Determine the final event based on machine-checkable blocking findings.
+          has_blocking = bool(review.get("blocking"))
+          stated_event = review.get("event", "COMMENT")
 
-          if review.get("event") == "APPROVE":
-              review["event"] = "COMMENT"
+          if stated_event not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
+              stated_event = "COMMENT"
+
+          if has_blocking and stated_event != "REQUEST_CHANGES":
+              print(
+                  f"WARNING: Agent stated event={stated_event!r} but blocking findings are present. "
+                  "Coercing to REQUEST_CHANGES."
+              )
+              final_event = "REQUEST_CHANGES"
+          elif not has_blocking and stated_event == "REQUEST_CHANGES":
+              print(
+                  "WARNING: Agent stated event=REQUEST_CHANGES but no blocking findings present. "
+                  "Keeping REQUEST_CHANGES to err on the side of caution."
+              )
+              final_event = "REQUEST_CHANGES"
+          elif stated_event == "APPROVE":
+              final_event = "COMMENT"
               review["body"] = ensure_prefix(
                   (review.get("body") or "") + "\n\n(Approval converted to COMMENT: Actions cannot approve pull requests.)"
               )
+          else:
+              final_event = stated_event
+
+          review["event"] = final_event
 
           inline_comments = []
+          for comment in review.get("blocking", []):
+              try:
+                  inline_comments.append({
+                      "path": str(comment["path"]),
+                      "line": int(comment["line"]),
+                      "side": "RIGHT",
+                      "body": str(comment["body"]),
+                  })
+              except (KeyError, ValueError, TypeError) as exc:
+                  print(
+                      f"Unexpected error building blocking inline comment: {exc}. "
+                      "Falling back to REQUEST_CHANGES."
+                  )
+                  review = dict(FALLBACK_REVIEW)
+                  review["body"] = ensure_prefix(review["body"])
+                  inline_comments = []
+                  break
           for comment in review.get("comments", []):
               try:
                   inline_comments.append({
@@ -233,4 +552,118 @@ jobs:
               review_payload["comments"] = []
               result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
               print(f"Posted review {result.get('id')} without inline comments.")
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a") as f:
+                  f.write(f"review_event={review['event']}\n")
+          PYEOF
+
+      - name: Ping Copilot to address automated findings
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true' && steps.post_review.outputs.review_event == 'REQUEST_CHANGES'
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          ROUND_COUNT: ${{ steps.check_rounds.outputs.round_count }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          token = os.environ["GH_TOKEN"]
+          pr = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+          round_count = int(os.environ.get("ROUND_COUNT", "0")) + 1
+
+          body = (
+            f"@copilot Please address the blocking findings from the automated PR review "
+            f"(review round {round_count}/7). "
+            "After pushing fixes, re-run tests and update docs if required."
+          )
+
+          payload = json.dumps({"body": body}).encode()
+          req = urllib.request.Request(
+            f"https://api.github.com/repos/{repo}/issues/{pr}/comments",
+            data=payload,
+            headers={
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+            method="POST",
+          )
+          with urllib.request.urlopen(req) as resp:
+            print(resp.status)
+          PYEOF
+
+      - name: Acknowledge process PR
+        if: steps.classify_pr.outputs.is_process_pr == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          GITHUB_API = "https://api.github.com"
+          SENTINEL = "<!-- pr-review: process-pr-acknowledged -->"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+          head_sha = os.environ["HEAD_SHA"]
+
+          # Avoid posting duplicate acknowledgments on repeated pushes.
+          page = 1
+          already_posted = False
+          while True:
+              req = urllib.request.Request(
+                  f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}/reviews?per_page=100&page={page}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(req) as response:
+                  reviews = json.loads(response.read())
+              if any(SENTINEL in (r.get("body") or "") for r in reviews):
+                  already_posted = True
+                  break
+              if len(reviews) < 100:
+                  break
+              page += 1
+
+          if already_posted:
+              print("Process PR acknowledgment already posted; skipping duplicate.")
+          else:
+              body = (
+                  f"{SENTINEL}\n"
+                  "This pull request touches only workflow, documentation, or repository-process files. "
+                  "The C/C++ code review agent (`cpp-pr-review`) is not applicable here and has been skipped. "
+                  "Please verify the changes satisfy the automation/process acceptance criteria stated in the linked issue."
+              )
+              payload = json.dumps({
+                  "commit_id": head_sha,
+                  "body": body,
+                  "event": "COMMENT",
+                  "comments": [],
+              }).encode()
+              req = urllib.request.Request(
+                  f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}/reviews",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req) as response:
+                  result = json.loads(response.read())
+              print(f"Posted process PR acknowledgment review {result.get('id')}.")
           PYEOF

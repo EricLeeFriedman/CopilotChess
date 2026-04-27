@@ -1,0 +1,85 @@
+name: Workflow / Process / Automation
+description: Capture an automation, workflow, or repository-process task. Use this for changes to GitHub Actions workflows, agent prompts, issue templates, PR templates, or documentation.
+title: "[Workflow]: "
+labels:
+  - workflow
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the automation or process improvement this task should deliver.
+    validations:
+      required: true
+
+  - type: textarea
+    id: trigger_events
+    attributes:
+      label: Workflow trigger and event expectations
+      description: |
+        List the workflow events, paths filters, or conditions that control when this workflow or process runs.
+        Example: "Triggered on pull_request: [opened, synchronize] for paths src/** and build.ps1."
+    validations:
+      required: true
+
+  - type: textarea
+    id: auth_permissions
+    attributes:
+      label: Auth, secrets, and permissions
+      description: |
+        List the secrets, tokens, and GitHub permission scopes required (e.g., GITHUB_TOKEN with pull-requests: write, PERSONAL_ACCESS_TOKEN for Copilot CLI, etc.).
+        State what happens if a required secret is absent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: output_contract
+    attributes:
+      label: Output and format contract
+      description: |
+        Describe the expected output format, schema, or side-effect when applicable.
+        Example: "Produces a JSON object with event, body, blocking[], and comments[] keys. Posts a GitHub pull request review via the REST API."
+
+  - type: textarea
+    id: fallback_behavior
+    attributes:
+      label: Fallback and error behavior
+      description: |
+        Describe what should happen when the workflow fails, produces unexpected output, or encounters an API error.
+        Example: "On JSON parse failure, post REQUEST_CHANGES with an error message instead of silently passing."
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Repository constraints touched
+      options:
+        - label: GitHub Actions workflow trigger or routing
+        - label: Auth, secrets, or repository permissions
+        - label: Agent prompt or custom agent behavior
+        - label: Issue or PR template
+        - label: Repository documentation
+        - label: Build or test infrastructure
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Write the specific conditions that must be true for this task to be done.
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation evidence
+      description: |
+        Describe how the change can be verified without relying solely on a live PR review round.
+        Example: "Run .github/scripts/validate-pr-review.py to exercise parse and routing logic. Open a test PR touching only docs/ to confirm cpp-pr-review is skipped."
+    validations:
+      required: true
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Documentation impact
+      description: Note which repository docs should be updated or confirmed (consult the doc ownership map in AGENTS.md).
