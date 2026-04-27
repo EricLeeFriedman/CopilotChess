@@ -42,7 +42,7 @@ Each subsystem gets a dedicated test file named `<subsystem>_tests.cpp` (e.g., `
 | `src/tests.h` | `RUN_TEST` macro shared by all test files |
 | `src/memory_tests.cpp` | Tests for the memory and arena subsystem |
 | `src/board_tests.cpp` | Tests for board initialisation |
-| `src/moves_tests.cpp` | Tests for pawn move generation and move application |
+| `src/moves_tests.cpp` | Tests for pawn move generation, knight move generation, and move application |
 | `src/main.cpp` `RunTests()` | Top-level runner — calls each `RunXxxTests` |
 
 ## Execution Expectations
