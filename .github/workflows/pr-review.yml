@@ -70,6 +70,7 @@ jobs:
           automated_count = sum(
               1 for r in reviews
               if isinstance(r.get("body"), str) and r["body"].startswith("@copilot")
+              and r.get("state") == "CHANGES_REQUESTED"
           )
           print(f"Automated review count: {automated_count}/{MAX_ROUNDS}")
 
@@ -205,6 +206,7 @@ jobs:
           cat copilot-review-prompt.txt | copilot --agent=cpp-pr-review -s --no-ask-user --add-dir="$PWD" > copilot-review-output.txt
 
       - name: Post GitHub review
+        id: post_review
         if: steps.check_rounds.outputs.skip_review != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -329,10 +331,15 @@ jobs:
               review_payload["comments"] = []
               result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
               print(f"Posted review {result.get('id')} without inline comments.")
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a") as f:
+                  f.write(f"review_event={review['event']}\n")
           PYEOF
 
       - name: Ping Copilot to address automated findings
-        if: steps.check_rounds.outputs.skip_review != 'true'
+        if: steps.check_rounds.outputs.skip_review != 'true' && steps.post_review.outputs.review_event == 'REQUEST_CHANGES'
         env:
           GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
