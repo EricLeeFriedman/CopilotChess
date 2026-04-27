@@ -207,7 +207,7 @@ jobs:
       - name: Post GitHub review
         if: steps.check_rounds.outputs.skip_review != 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -329,4 +329,39 @@ jobs:
               review_payload["comments"] = []
               result = gh_post(f"/repos/{repo}/pulls/{pr_number}/reviews", review_payload)
               print(f"Posted review {result.get('id')} without inline comments.")
+          PYEOF
+
+      - name: Ping Copilot to address automated findings
+        if: steps.check_rounds.outputs.skip_review != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          token = os.environ["GH_TOKEN"]
+          pr = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+
+          body = (
+            "@copilot Please address the blocking findings from the automated PR review. "
+            "After pushing fixes, re-run tests and update docs if required."
+          )
+
+          payload = json.dumps({"body": body}).encode()
+          req = urllib.request.Request(
+            f"https://api.github.com/repos/{repo}/issues/{pr}/comments",
+            data=payload,
+            headers={
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+            method="POST",
+          )
+          with urllib.request.urlopen(req) as resp:
+            print(resp.status)
           PYEOF
