@@ -10,7 +10,7 @@ struct Move
     int8      from_file;
     int8      to_rank;
     int8      to_file;
-    PieceType promotion;    // PIECE_NONE = normal move; PIECE_QUEEN = auto-promote to queen
+    PieceType promotion;    // PIECE_NONE = normal move; PIECE_QUEEN/ROOK/BISHOP/KNIGHT = promotion piece
     bool      is_en_passant;
 };
 
@@ -37,9 +37,9 @@ struct GameState
 // White moves first; no en passant available.
 void InitGameState(GameState* gs);
 
-// Append all candidate pawn moves for 'color' to 'list'.
+// Append all candidate pawn moves for gs->side_to_move to 'list'.
 // Does not clear list->count before appending.
-void GeneratePawnMoves(const GameState* gs, Color color, MoveList* list);
+void GeneratePawnMoves(const GameState* gs, MoveList* list);
 
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);

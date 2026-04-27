@@ -68,7 +68,7 @@ static bool TestPawn_WhiteDoublePush(void)
     InitGameState(gs);
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
     // e-pawn (file 4, rank 1) should have both e3 and e4.
     if (!FindMove(&list, 1, 4, 2, 4)) return false; // e3
@@ -86,9 +86,10 @@ static bool TestPawn_BlackDoublePush(void)
 
     GameState* gs = ArenaPushType(arena, GameState);
     InitGameState(gs);
+    gs->side_to_move = COLOR_BLACK;
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_BLACK, &list);
+    GeneratePawnMoves(gs, &list);
 
     // d-pawn (file 3, rank 6) should have both d6 and d5 in chess notation,
     // i.e., to rank 5 and rank 4 in 0-indexed terms.
@@ -112,7 +113,7 @@ static bool TestPawn_BlockedSinglePush(void)
     gs->board.squares[2][4] = { PIECE_ROOK, COLOR_BLACK };
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
     // Neither e3 nor e4 should be reachable.
     if (FindMove(&list, 1, 4, 2, 4)) return false;
@@ -135,7 +136,7 @@ static bool TestPawn_BlockedDoublePush(void)
     gs->board.squares[3][4] = { PIECE_ROOK, COLOR_BLACK };
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
     // e3 is reachable but e4 is not.
     if (!FindMove(&list, 1, 4, 2, 4)) return false; // e3 ok
@@ -166,7 +167,7 @@ static bool TestPawn_DiagonalCapture(void)
     // No piece on c5 (rank 4, file 2).
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
     // Capture on e5 should be listed.
     if (!FindMove(&list, 3, 3, 4, 4)) return false;
@@ -195,7 +196,7 @@ static bool TestPawn_NoFriendlyCapture(void)
     gs->board.squares[4][4] = { PIECE_ROOK,  COLOR_WHITE };
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
     // Must not capture own piece.
     if (FindMove(&list, 3, 3, 4, 4)) return false;
@@ -227,7 +228,7 @@ static bool TestPawn_EnPassant(void)
     gs->en_passant_file = 3;
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
     // White should be able to capture en passant to d6.
     if (!FindEnPassantMove(&list, 4, 4, 5, 3)) return false;
@@ -274,7 +275,7 @@ static bool TestPawn_ApplyEnPassant(void)
 }
 
 // ---------------------------------------------------------------------------
-// Promotion: pawn on the 7th rank (rank 6) promotes to queen.
+// Promotion: pawn on the 7th rank (rank 6) generates one move per piece type.
 // ---------------------------------------------------------------------------
 static bool TestPawn_Promotion(void)
 {
@@ -292,10 +293,13 @@ static bool TestPawn_Promotion(void)
     gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
 
     MoveList list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &list);
+    GeneratePawnMoves(gs, &list);
 
-    // Move to rank 7 (e8) must be a queen promotion.
-    if (!FindPromotion(&list, 6, 4, 7, 4, PIECE_QUEEN)) return false;
+    // One move per legal promotion piece must be present.
+    if (!FindPromotion(&list, 6, 4, 7, 4, PIECE_QUEEN))  return false;
+    if (!FindPromotion(&list, 6, 4, 7, 4, PIECE_ROOK))   return false;
+    if (!FindPromotion(&list, 6, 4, 7, 4, PIECE_BISHOP)) return false;
+    if (!FindPromotion(&list, 6, 4, 7, 4, PIECE_KNIGHT)) return false;
     return true;
 }
 
@@ -372,47 +376,6 @@ static bool TestPawn_EnPassantTargetTracking(void)
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// En passant must not be offered when generating moves for the off-turn side.
-// After White's double push it is Black's turn; a second call for COLOR_WHITE
-// must not include the en passant move even though the target square is set.
-// ---------------------------------------------------------------------------
-static bool TestPawn_EnPassantNotOfferedOffTurn(void)
-{
-    Arena*     arena = &s_Memory->test_scratch;
-    ArenaReset(arena);
-
-    GameState* gs = ArenaPushType(arena, GameState);
-    InitGameState(gs);
-
-    for (int32 r = 0; r < 8; ++r)
-        for (int32 f = 0; f < 8; ++f)
-            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
-
-    // White pawn on e5 (rank 4, file 4), black pawn on d5 (rank 4, file 3).
-    gs->board.squares[4][4] = { PIECE_PAWN, COLOR_WHITE };
-    gs->board.squares[4][3] = { PIECE_PAWN, COLOR_BLACK };
-
-    // Simulate: Black just made the double push — it is now White's turn.
-    gs->side_to_move    = COLOR_WHITE;
-    gs->en_passant_rank = 5;
-    gs->en_passant_file = 3;
-
-    // White can capture en passant (it is White's turn).
-    MoveList white_list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &white_list);
-    if (!FindEnPassantMove(&white_list, 4, 4, 5, 3)) return false;
-
-    // Now force side_to_move to BLACK while keeping the EP target.
-    // Generating WHITE moves off-turn must NOT include the EP move.
-    gs->side_to_move = COLOR_BLACK;
-    MoveList off_turn_list = {};
-    GeneratePawnMoves(gs, COLOR_WHITE, &off_turn_list);
-    if (FindEnPassantMove(&off_turn_list, 4, 4, 5, 3)) return false;
-
-    return true;
-}
-
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -429,7 +392,6 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestPawn_Promotion);
     RUN_TEST(TestPawn_ApplyPromotion);
     RUN_TEST(TestPawn_EnPassantTargetTracking);
-    RUN_TEST(TestPawn_EnPassantNotOfferedOffTurn);
 
     return true;
 }

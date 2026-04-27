@@ -13,17 +13,20 @@ void InitGameState(GameState* gs)
     gs->en_passant_file = -1;
 }
 
-void GeneratePawnMoves(const GameState* gs, Color color, MoveList* list)
+void GeneratePawnMoves(const GameState* gs, MoveList* list)
 {
     ASSERT(gs);
     ASSERT(list);
-    ASSERT(color == COLOR_WHITE || color == COLOR_BLACK);
 
+    const Color  color      = gs->side_to_move;
     const Board* board      = &gs->board;
     const int8   dir        = (color == COLOR_WHITE) ? 1 : -1;
     const int8   start_rank = (color == COLOR_WHITE) ? 1 : 6;
     const int8   promo_rank = (color == COLOR_WHITE) ? 7 : 0;
     const Color  enemy      = (color == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
+
+    static const PieceType k_promo_pieces[] =
+        { PIECE_QUEEN, PIECE_ROOK, PIECE_BISHOP, PIECE_KNIGHT };
 
     for (int32 rank = 0; rank < 8; ++rank)
     {
@@ -40,28 +43,46 @@ void GeneratePawnMoves(const GameState* gs, Color color, MoveList* list)
             if (next_rank >= 0 && next_rank < 8 &&
                 board->squares[next_rank][f].piece == PIECE_NONE)
             {
-                ASSERT(list->count < MAX_MOVES_PER_POSITION);
-                Move& m      = list->moves[list->count++];
-                m.from_rank  = r;
-                m.from_file  = f;
-                m.to_rank    = next_rank;
-                m.to_file    = f;
-                m.promotion  = (next_rank == promo_rank) ? PIECE_QUEEN : PIECE_NONE;
-                m.is_en_passant = false;
-
-                // Double push from starting rank (only when single push path is clear).
-                const int8 double_rank = r + (int8)(2 * dir);
-                if (r == start_rank &&
-                    board->squares[double_rank][f].piece == PIECE_NONE)
+                if (next_rank == promo_rank)
+                {
+                    // Emit one move per promotion piece.
+                    for (int32 pi = 0; pi < 4; ++pi)
+                    {
+                        ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                        Move& pm      = list->moves[list->count++];
+                        pm.from_rank  = r;
+                        pm.from_file  = f;
+                        pm.to_rank    = next_rank;
+                        pm.to_file    = f;
+                        pm.promotion  = k_promo_pieces[pi];
+                        pm.is_en_passant = false;
+                    }
+                }
+                else
                 {
                     ASSERT(list->count < MAX_MOVES_PER_POSITION);
-                    Move& dm      = list->moves[list->count++];
-                    dm.from_rank  = r;
-                    dm.from_file  = f;
-                    dm.to_rank    = double_rank;
-                    dm.to_file    = f;
-                    dm.promotion  = PIECE_NONE;
-                    dm.is_en_passant = false;
+                    Move& m      = list->moves[list->count++];
+                    m.from_rank  = r;
+                    m.from_file  = f;
+                    m.to_rank    = next_rank;
+                    m.to_file    = f;
+                    m.promotion  = PIECE_NONE;
+                    m.is_en_passant = false;
+
+                    // Double push from starting rank (only when single push path is clear).
+                    const int8 double_rank = r + (int8)(2 * dir);
+                    if (r == start_rank &&
+                        board->squares[double_rank][f].piece == PIECE_NONE)
+                    {
+                        ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                        Move& dm      = list->moves[list->count++];
+                        dm.from_rank  = r;
+                        dm.from_file  = f;
+                        dm.to_rank    = double_rank;
+                        dm.to_file    = f;
+                        dm.promotion  = PIECE_NONE;
+                        dm.is_en_passant = false;
+                    }
                 }
             }
 
@@ -75,24 +96,38 @@ void GeneratePawnMoves(const GameState* gs, Color color, MoveList* list)
 
                 const Square target = board->squares[next_rank][cf];
 
-                // Normal diagonal capture.
+                // Normal diagonal capture (including capture-promotion).
                 if (target.piece != PIECE_NONE && target.color == enemy)
                 {
-                    ASSERT(list->count < MAX_MOVES_PER_POSITION);
-                    Move& cm      = list->moves[list->count++];
-                    cm.from_rank  = r;
-                    cm.from_file  = f;
-                    cm.to_rank    = next_rank;
-                    cm.to_file    = cf;
-                    cm.promotion  = (next_rank == promo_rank) ? PIECE_QUEEN : PIECE_NONE;
-                    cm.is_en_passant = false;
+                    if (next_rank == promo_rank)
+                    {
+                        for (int32 pi = 0; pi < 4; ++pi)
+                        {
+                            ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                            Move& cm      = list->moves[list->count++];
+                            cm.from_rank  = r;
+                            cm.from_file  = f;
+                            cm.to_rank    = next_rank;
+                            cm.to_file    = cf;
+                            cm.promotion  = k_promo_pieces[pi];
+                            cm.is_en_passant = false;
+                        }
+                    }
+                    else
+                    {
+                        ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                        Move& cm      = list->moves[list->count++];
+                        cm.from_rank  = r;
+                        cm.from_file  = f;
+                        cm.to_rank    = next_rank;
+                        cm.to_file    = cf;
+                        cm.promotion  = PIECE_NONE;
+                        cm.is_en_passant = false;
+                    }
                 }
 
-                // En passant capture — only valid for the side currently to move.
-                // The en passant target was set by the opposing side's double push, so
-                // granting it to off-turn move generation would be illegal.
-                if (color == gs->side_to_move &&
-                    gs->en_passant_rank == next_rank && gs->en_passant_file == cf)
+                // En passant capture — always for side_to_move (color == gs->side_to_move).
+                if (gs->en_passant_rank == next_rank && gs->en_passant_file == cf)
                 {
                     ASSERT(list->count < MAX_MOVES_PER_POSITION);
                     Move& ep      = list->moves[list->count++];
