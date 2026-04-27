@@ -362,6 +362,33 @@ jobs:
                       )
                       return dict(FALLBACK_REVIEW)
 
+              # Validate that every blocking entry is a dict with required fields and a
+              # convertible line value.  A malformed blocking entry is a schema error
+              # because silently dropping it would post a blocking review with no
+              # actionable inline finding attached.
+              for idx, entry in enumerate(parsed["blocking"]):
+                  if not isinstance(entry, dict):
+                      print(
+                          f"Schema error: blocking[{idx}] is not a dict "
+                          f"(got {type(entry).__name__}). Falling back to REQUEST_CHANGES."
+                      )
+                      return dict(FALLBACK_REVIEW)
+                  for required_key in ("path", "line", "body"):
+                      if required_key not in entry:
+                          print(
+                              f"Schema error: blocking[{idx}] is missing required key "
+                              f"'{required_key}'. Falling back to REQUEST_CHANGES."
+                          )
+                          return dict(FALLBACK_REVIEW)
+                  try:
+                      int(entry["line"])
+                  except (ValueError, TypeError):
+                      print(
+                          f"Schema error: blocking[{idx}]['line'] cannot be converted to int "
+                          f"(got {type(entry['line']).__name__}). Falling back to REQUEST_CHANGES."
+                      )
+                      return dict(FALLBACK_REVIEW)
+
               return parsed
 
           review = parse_review(cleaned_content)
@@ -416,8 +443,15 @@ jobs:
                       "side": "RIGHT",
                       "body": str(comment["body"]),
                   })
-              except (KeyError, ValueError, TypeError):
-                  pass
+              except (KeyError, ValueError, TypeError) as exc:
+                  print(
+                      f"Unexpected error building blocking inline comment: {exc}. "
+                      "Falling back to REQUEST_CHANGES."
+                  )
+                  review = dict(FALLBACK_REVIEW)
+                  review["body"] = ensure_prefix(review["body"])
+                  inline_comments = []
+                  break
           for comment in review.get("comments", []):
               try:
                   inline_comments.append({
