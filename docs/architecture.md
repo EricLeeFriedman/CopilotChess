@@ -36,6 +36,25 @@ Own the Win32 application entry point, window creation, message pump, mouse inpu
 
 Own the pixel buffer, drawing primitives, sprite or glyph composition strategy, and presentation to the window surface using the Windows API.
 
+The renderer is implemented in `src/renderer.h` and `src/renderer.cpp`. Its state lives in `RendererState`:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `pixels` | `Pixel*` | CPU-side BGRA pixel buffer; allocated from the `renderer` arena at startup |
+| `width` / `height` | `int32` | Logical render resolution (1280 × 720 by default) |
+| `bmi` | `BITMAPINFO` | Filled once at startup; passed to `StretchDIBits` every frame |
+
+The public API:
+
+| Function | Purpose |
+|---|---|
+| `RendererInit(rs, arena, w, h)` | Push the pixel buffer from the arena, fill `bmi` |
+| `ClearBuffer(rs, color)` | Fill every pixel with a solid `Pixel` colour |
+| `DrawRect(rs, x, y, w, h, color)` | Fill an axis-aligned rectangle; silently clips to buffer bounds |
+| `PresentFrame(rs, window)` | Call `StretchDIBits` to blit the pixel buffer to the window client area |
+
+`PresentFrame` acquires the DC with `GetDC`/`ReleaseDC` each frame — no per-frame GDI objects are allocated. The pixel format is BGRA with 32 bits per pixel and a top-down row order (negative `biHeight`).
+
 ### Memory
 
 Owns startup allocation and arena partitioning. One 64 MB block is reserved and committed via `VirtualAlloc` at process startup. It is carved into four contiguous arenas:
