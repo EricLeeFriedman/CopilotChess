@@ -341,6 +341,13 @@ jobs:
                   print(f"Copilot CLI response is valid JSON but not an object (got {type(parsed).__name__}). Using fallback.")
                   return dict(FALLBACK_REVIEW)
 
+              if "event" in parsed and not isinstance(parsed["event"], str):
+                  print(
+                      f"Schema error: 'event' is not a string (got {type(parsed['event']).__name__}). "
+                      "Falling back to REQUEST_CHANGES to avoid a TypeError on the event check."
+                  )
+                  return dict(FALLBACK_REVIEW)
+
               for key in ("blocking", "comments"):
                   if key not in parsed:
                       print(
