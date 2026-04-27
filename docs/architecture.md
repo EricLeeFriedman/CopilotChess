@@ -91,6 +91,15 @@ Own legal move generation, check detection, checkmate detection, and any support
 - **Board filtering** — destinations outside the 8×8 grid are discarded.
 - **Friendly-piece filtering** — destinations occupied by a piece of `side_to_move` are discarded. Destinations occupied by an enemy piece are legal (capture).
 
+#### Sliding Piece Move Generation
+
+`GenerateRookMoves`, `GenerateBishopMoves`, and `GenerateQueenMoves` all use ray casting shared by the internal `CastRays` helper:
+
+- **Ray directions** — rook uses the four orthogonal directions; bishop uses the four diagonals; queen uses all eight.
+- **Ray termination** — each ray walks one square at a time until it leaves the board, hits a friendly piece (ray stops; square excluded), or hits an enemy piece (ray stops; square included as a capture).
+
+`GenerateQueenMoves` is equivalent to running the rook rays and bishop rays in a single pass over the board.
+
 #### Move Application
 
 `ApplyMove(GameState*, const Move*)` mutates the game state:
