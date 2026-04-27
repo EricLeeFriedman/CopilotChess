@@ -30,6 +30,39 @@ This repository is designed so that work can move from intent to merged pull req
 - Automated review findings should stay high signal-to-noise, with inline comments used only when they map to a specific changed line.
 - Automated review findings intended for Copilot follow-up — both the overall summary and every inline comment — should be prefixed with `@copilot`. These prefixes make each finding an explicit directed action item that the Copilot coding agent picks up automatically on its next pass.
 
+### Review Routing by PR Type
+
+The `pr-review.yml` workflow classifies every pull request before invoking any review agent:
+
+- **Code PRs** (any file under `src/` or `build.ps1` is changed): the `cpp-pr-review` agent is invoked for full adversarial C/C++ review.
+- **Process-only PRs** (only `docs/**`, `.github/**`, `AGENTS.md`, `README.md`, or other non-code files are changed): the `cpp-pr-review` agent is **skipped**. The workflow posts a single COMMENT review acknowledging the PR type and noting that the C/C++ review agent does not apply. Human or manual review of the process/docs changes is expected.
+- **Mixed PRs** (both code and process files changed): treated as a code PR; `cpp-pr-review` runs in full.
+
+This routing prevents the C/C++ specialist agent from producing irrelevant findings on workflow YAML, documentation, or template files — which was a primary source of review churn on automation PRs.
+
+### Automation and Process Tasks
+
+Use the **Workflow / Process / Automation** issue template (`.github/ISSUE_TEMPLATE/workflow.yml`) when opening issues for:
+
+- Changes to GitHub Actions workflows (`.github/workflows/**`)
+- Changes to agent prompts (`.github/agents/**`)
+- Changes to issue templates, PR templates, or `AGENTS.md`
+- Repository documentation changes that affect tooling expectations
+
+The template requires explicit fields for:
+
+- **Workflow trigger/event expectations**: which events, path filters, or conditions control when this workflow or process runs.
+- **Auth/secrets/permissions**: tokens required, scopes needed, and what happens if a required secret is absent.
+- **Output/format contract**: expected output schema or side-effects.
+- **Fallback/error behavior**: what happens on failure or unexpected output.
+- **Validation evidence**: how the change can be verified without relying solely on a live PR review round.
+
+Automation tasks must describe their validation path up front. Acceptable validation approaches include:
+
+1. Running `.github/scripts/validate-pr-review.py` locally or in CI to exercise parse and routing logic offline.
+2. Opening a test PR that touches only `docs/` or `.github/` files and confirming the workflow posts an acknowledgment COMMENT (not `REQUEST_CHANGES`) and skips `cpp-pr-review`.
+3. Script-based or fixture-based tests for any helper logic extracted from a workflow.
+
 ### Structured Review Output Schema
 
 The review agent must return a JSON object with the following fields:

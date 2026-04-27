@@ -1,0 +1,24 @@
+name: Validate PR Review Logic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pr-review.yml'
+      - '.github/scripts/validate-pr-review.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pr-review.yml'
+      - '.github/scripts/validate-pr-review.py'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run PR review validation
+        run: python3 .github/scripts/validate-pr-review.py

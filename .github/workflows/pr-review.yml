@@ -36,7 +36,70 @@ jobs:
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
+      - name: Classify PR
+        id: classify_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          GITHUB_API = "https://api.github.com"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+
+          def gh_get_paged(path):
+              results = []
+              page = 1
+              while True:
+                  sep = "&" if "?" in path else "?"
+                  req = urllib.request.Request(
+                      f"{GITHUB_API}{path}{sep}per_page=100&page={page}",
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/vnd.github+json",
+                          "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                  )
+                  with urllib.request.urlopen(req) as response:
+                      page_data = json.loads(response.read())
+                  if not page_data:
+                      break
+                  results.extend(page_data)
+                  if len(page_data) < 100:
+                      break
+                  page += 1
+              return results
+
+          files = gh_get_paged(f"/repos/{repo}/pulls/{pr_number}/files")
+          changed_paths = [f["filename"] for f in files]
+
+          # A PR is a "code PR" if it touches src/ or build.ps1.
+          # Everything else (docs/, .github/**, AGENTS.md, README.md, etc.) is
+          # considered a process/workflow/docs change that does not require the
+          # C/C++ code review agent.
+          has_code = any(
+              p.startswith("src/") or p == "build.ps1"
+              for p in changed_paths
+          )
+          is_process_pr = not has_code
+
+          print(f"Changed files: {changed_paths}")
+          print(f"Has C/C++ code changes: {has_code}")
+          print(f"Is process-only PR: {is_process_pr}")
+
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          if github_output:
+              with open(github_output, "a") as f:
+                  f.write(f"is_process_pr={'true' if is_process_pr else 'false'}\n")
+          PYEOF
+
       - name: Check review round count
+        if: steps.classify_pr.outputs.is_process_pr != 'true'
         id: check_rounds
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,7 +162,7 @@ jobs:
           PYEOF
 
       - name: Post round limit message
-        if: steps.check_rounds.outputs.skip_review == 'true'
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -169,7 +232,7 @@ jobs:
           PYEOF
 
       - name: Build review input
-        if: steps.check_rounds.outputs.skip_review != 'true'
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -204,7 +267,7 @@ jobs:
           PYEOF
 
       - name: Run Copilot review agent
-        if: steps.check_rounds.outputs.skip_review != 'true'
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN || secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
@@ -254,7 +317,7 @@ jobs:
 
       - name: Post GitHub review
         id: post_review
-        if: steps.check_rounds.outputs.skip_review != 'true'
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -497,7 +560,7 @@ jobs:
           PYEOF
 
       - name: Ping Copilot to address automated findings
-        if: steps.check_rounds.outputs.skip_review != 'true' && steps.post_review.outputs.review_event == 'REQUEST_CHANGES'
+        if: steps.classify_pr.outputs.is_process_pr != 'true' && steps.check_rounds.outputs.skip_review != 'true' && steps.post_review.outputs.review_event == 'REQUEST_CHANGES'
         env:
           GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -532,4 +595,75 @@ jobs:
           )
           with urllib.request.urlopen(req) as resp:
             print(resp.status)
+          PYEOF
+
+      - name: Acknowledge process PR
+        if: steps.classify_pr.outputs.is_process_pr == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          GITHUB_API = "https://api.github.com"
+          SENTINEL = "<!-- pr-review: process-pr-acknowledged -->"
+
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["REPO"]
+          head_sha = os.environ["HEAD_SHA"]
+
+          # Avoid posting duplicate acknowledgments on repeated pushes.
+          page = 1
+          already_posted = False
+          while True:
+              req = urllib.request.Request(
+                  f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}/reviews?per_page=100&page={page}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(req) as response:
+                  reviews = json.loads(response.read())
+              if any(SENTINEL in (r.get("body") or "") for r in reviews):
+                  already_posted = True
+                  break
+              if len(reviews) < 100:
+                  break
+              page += 1
+
+          if already_posted:
+              print("Process PR acknowledgment already posted; skipping duplicate.")
+          else:
+              body = (
+                  f"{SENTINEL}\n"
+                  "This pull request touches only workflow, documentation, or repository-process files. "
+                  "The C/C++ code review agent (`cpp-pr-review`) is not applicable here and has been skipped. "
+                  "Please verify the changes satisfy the automation/process acceptance criteria stated in the linked issue."
+              )
+              payload = json.dumps({
+                  "commit_id": head_sha,
+                  "body": body,
+                  "event": "COMMENT",
+                  "comments": [],
+              }).encode()
+              req = urllib.request.Request(
+                  f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}/reviews",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req) as response:
+                  result = json.loads(response.read())
+              print(f"Posted process PR acknowledgment review {result.get('id')}.")
           PYEOF

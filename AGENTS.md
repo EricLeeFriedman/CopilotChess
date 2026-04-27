@@ -49,6 +49,8 @@ When you make a change, update the docs in the right column of this table in the
 | Change to any file in `.github\workflows\` | `docs\build-and-runner.md` |
 | Change to a gameplay rule, input behavior, or win condition | `docs\requirements.md` |
 | Change to the task or PR workflow | `docs\workflow.md` |
+| Change to review routing logic or PR classification in `pr-review.yml` | `docs\workflow.md`, `docs\build-and-runner.md` |
+| Change to agent prompt scope or behavior (`.github\agents\**`) | `docs\workflow.md` |
 | Major milestone: new subsystem working end-to-end | `README.md` Current State |
 | Change to a core constraint (platform, memory, testing, build) | `.github\copilot-instructions.md` |
 
