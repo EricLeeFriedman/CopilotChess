@@ -47,5 +47,22 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list);
 // Does not clear list->count before appending.
 void GenerateKnightMoves(const GameState* gs, MoveList* list);
 
+// Append all candidate rook moves for gs->side_to_move to 'list'.
+// Casts rays along the four orthogonal directions. Stops after capturing an
+// enemy piece (inclusive) or before a friendly piece (exclusive).
+// Does not clear list->count before appending.
+void GenerateRookMoves(const GameState* gs, MoveList* list);
+
+// Append all candidate bishop moves for gs->side_to_move to 'list'.
+// Casts rays along the four diagonal directions. Stops after capturing an
+// enemy piece (inclusive) or before a friendly piece (exclusive).
+// Does not clear list->count before appending.
+void GenerateBishopMoves(const GameState* gs, MoveList* list);
+
+// Append all candidate queen moves for gs->side_to_move to 'list'.
+// Combines the rook rays and bishop rays (all eight directions).
+// Does not clear list->count before appending.
+void GenerateQueenMoves(const GameState* gs, MoveList* list);
+
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);

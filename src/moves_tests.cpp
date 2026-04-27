@@ -493,6 +493,286 @@ static bool TestKnight_EnemyCapture(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Rook on an open board — all rays extend to the board edge.
+// ---------------------------------------------------------------------------
+static bool TestRook_OpenBoard(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White rook on d4 (rank 3, file 3).
+    gs->board.squares[3][3] = { PIECE_ROOK, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateRookMoves(gs, &list);
+
+    // Along the file (rank axis): 3 squares up + 4 squares down = 7 moves.
+    // Along the rank (file axis): 3 squares left + 4 squares right = 7 moves.
+    if (list.count != 14) return false;
+
+    // Spot check: all four directions.
+    if (!FindMove(&list, 3, 3, 7, 3)) return false; // rank 7 (north)
+    if (!FindMove(&list, 3, 3, 0, 3)) return false; // rank 0 (south)
+    if (!FindMove(&list, 3, 3, 3, 7)) return false; // file 7 (east)
+    if (!FindMove(&list, 3, 3, 3, 0)) return false; // file 0 (west)
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Rook blocked by a friendly piece — ray stops before it.
+// ---------------------------------------------------------------------------
+static bool TestRook_BlockedByFriendly(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White rook on d4 (rank 3, file 3); white pawn on d6 (rank 5, file 3).
+    gs->board.squares[3][3] = { PIECE_ROOK, COLOR_WHITE };
+    gs->board.squares[5][3] = { PIECE_PAWN, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateRookMoves(gs, &list);
+
+    // d5 (rank 4, file 3) is reachable; d6 (rank 5) is not.
+    if (!FindMove(&list, 3, 3, 4, 3)) return false;
+    if ( FindMove(&list, 3, 3, 5, 3)) return false;
+    if ( FindMove(&list, 3, 3, 6, 3)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Rook captures an enemy piece — includes the capture square, stops beyond.
+// ---------------------------------------------------------------------------
+static bool TestRook_CapturesEnemy(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White rook on d4 (rank 3, file 3); black pawn on d6 (rank 5, file 3).
+    gs->board.squares[3][3] = { PIECE_ROOK, COLOR_WHITE };
+    gs->board.squares[5][3] = { PIECE_PAWN, COLOR_BLACK };
+
+    MoveList list = {};
+    GenerateRookMoves(gs, &list);
+
+    // d5 and d6 (capture) are reachable; beyond d6 is not.
+    if (!FindMove(&list, 3, 3, 4, 3)) return false;
+    if (!FindMove(&list, 3, 3, 5, 3)) return false;
+    if ( FindMove(&list, 3, 3, 6, 3)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Bishop on an open board — all four diagonal rays to board edges.
+// ---------------------------------------------------------------------------
+static bool TestBishop_OpenBoard(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White bishop on d4 (rank 3, file 3).
+    gs->board.squares[3][3] = { PIECE_BISHOP, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateBishopMoves(gs, &list);
+
+    // NE (+r,+f): steps 1-4 → rank 4-7, file 4-7 (4 squares)
+    // NW (+r,-f): steps 1-3 → rank 4-6, file 2-0 (3 squares)
+    // SE (-r,+f): steps 1-3 → rank 2-0, file 4-6 (3 squares)
+    // SW (-r,-f): steps 1-3 → rank 2-0, file 2-0 (3 squares)
+    // Total: 4+3+3+3 = 13
+    if (list.count != 13) return false;
+
+    // Spot-check one square per diagonal.
+    if (!FindMove(&list, 3, 3, 7, 7)) return false; // NE corner
+    if (!FindMove(&list, 3, 3, 6, 0)) return false; // NW
+    if (!FindMove(&list, 3, 3, 0, 6)) return false; // SE
+    if (!FindMove(&list, 3, 3, 0, 0)) return false; // SW corner
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Bishop blocked by a friendly piece on one diagonal.
+// ---------------------------------------------------------------------------
+static bool TestBishop_BlockedByFriendly(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White bishop on d4 (rank 3, file 3); white pawn on f6 (rank 5, file 5).
+    gs->board.squares[3][3] = { PIECE_BISHOP, COLOR_WHITE };
+    gs->board.squares[5][5] = { PIECE_PAWN,   COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateBishopMoves(gs, &list);
+
+    // e5 (rank 4, file 4) is reachable on the NE diagonal; f6 is not.
+    if (!FindMove(&list, 3, 3, 4, 4)) return false;
+    if ( FindMove(&list, 3, 3, 5, 5)) return false;
+    if ( FindMove(&list, 3, 3, 6, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Bishop captures an enemy on a diagonal — includes that square, stops beyond.
+// ---------------------------------------------------------------------------
+static bool TestBishop_CapturesEnemy(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White bishop on d4 (rank 3, file 3); black pawn on f6 (rank 5, file 5).
+    gs->board.squares[3][3] = { PIECE_BISHOP, COLOR_WHITE };
+    gs->board.squares[5][5] = { PIECE_PAWN,   COLOR_BLACK };
+
+    MoveList list = {};
+    GenerateBishopMoves(gs, &list);
+
+    // e5 and f6 (capture) are reachable; g7 and beyond are not.
+    if (!FindMove(&list, 3, 3, 4, 4)) return false;
+    if (!FindMove(&list, 3, 3, 5, 5)) return false;
+    if ( FindMove(&list, 3, 3, 6, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Queen on open board — all eight rays (rook + bishop combined).
+// ---------------------------------------------------------------------------
+static bool TestQueen_OpenBoard(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White queen on d4 (rank 3, file 3).
+    gs->board.squares[3][3] = { PIECE_QUEEN, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateQueenMoves(gs, &list);
+
+    // Orthogonal: 7+7 = 14; diagonal: 13 (same as bishop test above).
+    if (list.count != 27) return false;
+
+    // Spot-check a square in each of the eight directions.
+    if (!FindMove(&list, 3, 3, 7, 3)) return false; // north
+    if (!FindMove(&list, 3, 3, 0, 3)) return false; // south
+    if (!FindMove(&list, 3, 3, 3, 7)) return false; // east
+    if (!FindMove(&list, 3, 3, 3, 0)) return false; // west
+    if (!FindMove(&list, 3, 3, 7, 7)) return false; // NE
+    if (!FindMove(&list, 3, 3, 6, 0)) return false; // NW
+    if (!FindMove(&list, 3, 3, 0, 6)) return false; // SE
+    if (!FindMove(&list, 3, 3, 0, 0)) return false; // SW
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Queen blocked by a friendly piece in one direction.
+// ---------------------------------------------------------------------------
+static bool TestQueen_BlockedByFriendly(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White queen on d4 (rank 3, file 3); white pawn on d6 (rank 5, file 3).
+    gs->board.squares[3][3] = { PIECE_QUEEN, COLOR_WHITE };
+    gs->board.squares[5][3] = { PIECE_PAWN,  COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateQueenMoves(gs, &list);
+
+    // d5 is reachable northward; d6 and beyond are not.
+    if (!FindMove(&list, 3, 3, 4, 3)) return false;
+    if ( FindMove(&list, 3, 3, 5, 3)) return false;
+    if ( FindMove(&list, 3, 3, 6, 3)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Queen captures an enemy — includes the capture square, stops beyond.
+// ---------------------------------------------------------------------------
+static bool TestQueen_CapturesEnemy(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White queen on d4 (rank 3, file 3); black pawn on g7 (rank 6, file 6).
+    gs->board.squares[3][3] = { PIECE_QUEEN, COLOR_WHITE };
+    gs->board.squares[6][6] = { PIECE_PAWN,  COLOR_BLACK };
+
+    MoveList list = {};
+    GenerateQueenMoves(gs, &list);
+
+    // e5, f6 are reachable; g7 is a capture (reachable); h8 is not.
+    if (!FindMove(&list, 3, 3, 4, 4)) return false;
+    if (!FindMove(&list, 3, 3, 5, 5)) return false;
+    if (!FindMove(&list, 3, 3, 6, 6)) return false;
+    if ( FindMove(&list, 3, 3, 7, 7)) return false;
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -514,6 +794,18 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestKnight_CornerMoves);
     RUN_TEST(TestKnight_NoFriendlyCapture);
     RUN_TEST(TestKnight_EnemyCapture);
+
+    RUN_TEST(TestRook_OpenBoard);
+    RUN_TEST(TestRook_BlockedByFriendly);
+    RUN_TEST(TestRook_CapturesEnemy);
+
+    RUN_TEST(TestBishop_OpenBoard);
+    RUN_TEST(TestBishop_BlockedByFriendly);
+    RUN_TEST(TestBishop_CapturesEnemy);
+
+    RUN_TEST(TestQueen_OpenBoard);
+    RUN_TEST(TestQueen_BlockedByFriendly);
+    RUN_TEST(TestQueen_CapturesEnemy);
 
     return true;
 }

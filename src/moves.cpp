@@ -193,6 +193,109 @@ void GenerateKnightMoves(const GameState* gs, MoveList* list)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Shared ray-casting helper: cast rays from each piece of the given type and
+// the given set of directions. For each step along the ray, stop (exclusive)
+// before a friendly piece or stop (inclusive) after an enemy piece.
+// ---------------------------------------------------------------------------
+static void CastRays(const GameState* gs, MoveList* list, PieceType piece_type,
+                     const int8 dirs[][2], int32 dir_count)
+{
+    const Color  color = gs->side_to_move;
+    const Board* board = &gs->board;
+
+    for (int32 rank = 0; rank < 8; ++rank)
+    {
+        for (int32 file = 0; file < 8; ++file)
+        {
+            const Square sq = board->squares[rank][file];
+            if (sq.piece != piece_type || sq.color != color) continue;
+
+            const int8 r = (int8)rank;
+            const int8 f = (int8)file;
+
+            for (int32 d = 0; d < dir_count; ++d)
+            {
+                int8 tr = r + dirs[d][0];
+                int8 tf = f + dirs[d][1];
+
+                while (tr >= 0 && tr < 8 && tf >= 0 && tf < 8)
+                {
+                    const Square target = board->squares[tr][tf];
+
+                    if (target.piece != PIECE_NONE && target.color == color)
+                    {
+                        // Friendly piece — stop ray, do not include this square.
+                        break;
+                    }
+
+                    ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                    Move& m      = list->moves[list->count++];
+                    m.from_rank  = r;
+                    m.from_file  = f;
+                    m.to_rank    = tr;
+                    m.to_file    = tf;
+                    m.promotion  = PIECE_NONE;
+                    m.is_en_passant = false;
+
+                    if (target.piece != PIECE_NONE)
+                    {
+                        // Enemy piece — include this capture square and stop ray.
+                        break;
+                    }
+
+                    tr = (int8)(tr + dirs[d][0]);
+                    tf = (int8)(tf + dirs[d][1]);
+                }
+            }
+        }
+    }
+}
+
+void GenerateRookMoves(const GameState* gs, MoveList* list)
+{
+    ASSERT(gs);
+    ASSERT(list);
+
+    static const int8 k_rook_dirs[4][2] =
+    {
+        { 1,  0 }, { -1,  0 },
+        { 0,  1 }, {  0, -1 },
+    };
+
+    CastRays(gs, list, PIECE_ROOK, k_rook_dirs, 4);
+}
+
+void GenerateBishopMoves(const GameState* gs, MoveList* list)
+{
+    ASSERT(gs);
+    ASSERT(list);
+
+    static const int8 k_bishop_dirs[4][2] =
+    {
+        { 1,  1 }, { 1, -1 },
+        {-1,  1 }, {-1, -1 },
+    };
+
+    CastRays(gs, list, PIECE_BISHOP, k_bishop_dirs, 4);
+}
+
+void GenerateQueenMoves(const GameState* gs, MoveList* list)
+{
+    ASSERT(gs);
+    ASSERT(list);
+
+    static const int8 k_queen_dirs[8][2] =
+    {
+        { 1,  0 }, { -1,  0 },
+        { 0,  1 }, {  0, -1 },
+        { 1,  1 }, {  1, -1 },
+        {-1,  1 }, { -1, -1 },
+    };
+
+    CastRays(gs, list, PIECE_QUEEN, k_queen_dirs, 8);
+}
+
 void ApplyMove(GameState* gs, const Move* move){
     ASSERT(gs);
     ASSERT(move);
