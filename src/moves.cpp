@@ -60,6 +60,7 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
                         pm.to_file    = f;
                         pm.promotion  = k_promo_pieces[pi];
                         pm.is_en_passant = false;
+                        pm.is_castling   = false;
                     }
                 }
                 else
@@ -72,6 +73,7 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
                     m.to_file    = f;
                     m.promotion  = PIECE_NONE;
                     m.is_en_passant = false;
+                    m.is_castling   = false;
 
                     // Double push from starting rank (only when single push path is clear).
                     const int8 double_rank = r + (int8)(2 * dir);
@@ -86,6 +88,7 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
                         dm.to_file    = f;
                         dm.promotion  = PIECE_NONE;
                         dm.is_en_passant = false;
+                        dm.is_castling   = false;
                     }
                 }
             }
@@ -115,6 +118,7 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
                             cm.to_file    = cf;
                             cm.promotion  = k_promo_pieces[pi];
                             cm.is_en_passant = false;
+                            cm.is_castling   = false;
                         }
                     }
                     else
@@ -127,6 +131,7 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
                         cm.to_file    = cf;
                         cm.promotion  = PIECE_NONE;
                         cm.is_en_passant = false;
+                        cm.is_castling   = false;
                     }
                 }
 
@@ -141,6 +146,7 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
                     ep.to_file    = cf;
                     ep.promotion  = PIECE_NONE;
                     ep.is_en_passant = true;
+                    ep.is_castling   = false;
                 }
             }
         }
@@ -192,6 +198,7 @@ void GenerateKnightMoves(const GameState* gs, MoveList* list)
                 m.to_file    = tf;
                 m.promotion  = PIECE_NONE;
                 m.is_en_passant = false;
+                m.is_castling   = false;
             }
         }
     }
@@ -241,6 +248,7 @@ static void CastRays(const GameState* gs, MoveList* list, PieceType piece_type,
                     m.to_file    = tf;
                     m.promotion  = PIECE_NONE;
                     m.is_en_passant = false;
+                    m.is_castling   = false;
 
                     if (target.piece != PIECE_NONE)
                     {
@@ -466,6 +474,7 @@ void GenerateKingMoves(const GameState* gs, MoveList* list)
 
         const Square target = board->squares[tr][tf];
         if (target.piece != PIECE_NONE && target.color == color) continue;
+        if (IsSquareAttacked(board, tr, tf, enemy)) continue;
 
         ASSERT(list->count < MAX_MOVES_PER_POSITION);
         Move& m         = list->moves[list->count++];

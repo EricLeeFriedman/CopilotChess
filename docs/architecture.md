@@ -104,7 +104,7 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 `GenerateKingMoves(const GameState*, MoveList*)` appends all candidate king moves for `gs->side_to_move`:
 
-- **Adjacent moves** — all 8 directions (orthogonal and diagonal), one square at a time. Off-board destinations and squares occupied by a friendly piece are excluded.
+- **Adjacent moves** — all 8 directions (orthogonal and diagonal), one square at a time. Off-board destinations, squares occupied by a friendly piece, and squares attacked by the opponent are excluded.
 - **Castling** — kingside (`to_file = 6`) and queenside (`to_file = 2`) castling moves are generated when:
   - The relevant castling-rights flag (`castling_wk` / `castling_wq` / `castling_bk` / `castling_bq`) is true.
   - All squares between the king and rook are empty (f1/g1 for white kingside; b1/c1/d1 for white queenside; equivalent squares for black).

@@ -863,7 +863,7 @@ static bool TestKing_NoFriendlyCapture(void)
 }
 
 // ---------------------------------------------------------------------------
-// King can capture an enemy piece.
+// King can capture an enemy piece that is not protected.
 // ---------------------------------------------------------------------------
 static bool TestKing_EnemyCapture(void)
 {
@@ -877,14 +877,50 @@ static bool TestKing_EnemyCapture(void)
         for (int32 f = 0; f < 8; ++f)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
+    // White king on e4 (3,4); isolated black pawn on f5 (4,5) — not protected.
+    // A black pawn attacks diagonally toward rank 0, so it attacks (3,4) and (3,6),
+    // not any other squares adjacent to the king.
     gs->board.squares[3][4] = { PIECE_KING,  COLOR_WHITE };
-    gs->board.squares[4][4] = { PIECE_ROOK,  COLOR_BLACK };
+    gs->board.squares[4][5] = { PIECE_PAWN,  COLOR_BLACK };
 
     MoveList list = {};
     GenerateKingMoves(gs, &list);
 
-    if (!FindMove(&list, 3, 4, 4, 4)) return false;
-    if (list.count != 8) return false;
+    // King must be able to capture the pawn on f5 (4,5).
+    // Note: (4,5) is attacked by the pawn's own attack pattern (black pawn
+    // attacks from (4,5) toward (3,4) and (3,6)), but the pawn does NOT attack
+    // its own square, so the king can capture it.
+    if (!FindMove(&list, 3, 4, 4, 5)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// King cannot move to an attacked square.
+// ---------------------------------------------------------------------------
+static bool TestKing_CannotMoveIntoAttackedSquare(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e1 (0,4); black rook on e8 (7,4) controls the entire e-file.
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK, COLOR_BLACK };
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // e2 (1,4) is on the e-file, attacked by the black rook — must not be in list.
+    if (FindMove(&list, 0, 4, 1, 4)) return false;
+    // d2 (1,3) and f2 (1,5) are not on the e-file, so they should be reachable.
+    if (!FindMove(&list, 0, 4, 1, 3)) return false;
+    if (!FindMove(&list, 0, 4, 1, 5)) return false;
     return true;
 }
 
@@ -1268,6 +1304,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestKing_CornerMoves);
     RUN_TEST(TestKing_NoFriendlyCapture);
     RUN_TEST(TestKing_EnemyCapture);
+    RUN_TEST(TestKing_CannotMoveIntoAttackedSquare);
 
     RUN_TEST(TestCastling_WhiteKingside);
     RUN_TEST(TestCastling_WhiteQueenside);
