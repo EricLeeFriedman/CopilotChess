@@ -30,6 +30,19 @@ This repository is designed so that work can move from intent to merged pull req
 - Automated review findings should stay high signal-to-noise, with inline comments used only when they map to a specific changed line.
 - Automated review findings intended for Copilot follow-up — both the overall summary and every inline comment — should be prefixed with `@copilot`. These prefixes make each finding an explicit directed action item that the Copilot coding agent picks up automatically on its next pass.
 
+## Retrospective Workflow
+
+A dedicated **Retrospective Analysis** workflow (`.github/workflows/retrospective.yml`) runs a meta-improvement pass over a merged or closed pull request to identify why the automated system struggled and to propose concrete improvements.
+
+- The workflow is triggered in two ways:
+  - **Manual trigger (`workflow_dispatch`)**: provide any pull request number. The retrospective always runs.
+  - **Automatic trigger (`pull_request: closed`)**: runs whenever a pull request is closed within the same repository, but only proceeds when the closed PR accumulated **three or more** automated `REQUEST_CHANGES` review rounds from `github-actions[bot]`. PRs with fewer rounds are skipped automatically.
+- The workflow collects the full PR history: metadata, commit list, all reviews, all issue comments, all inline review comments, and the PR diff. This data is assembled into `retro-input.md` for the agent.
+- The `.github/agents/retrospective.agent.md` agent reads the collected history alongside the system context files (`AGENTS.md`, workflow docs, the `pr-review.yml` workflow, and the `cpp-pr-review` agent) to produce a structured retrospective report.
+- The report classifies findings as one-off mistakes, repeated/systemic mistakes, or missing safeguards; identifies root causes; and proposes prioritized, file-specific improvements to agent prompts, workflow logic, docs, and templates.
+- The report is posted as a PR comment under `github-actions[bot]` using `GITHUB_TOKEN`. A duplicate-check sentinel prevents the same comment from being posted more than once per PR.
+- Like the PR review workflow, this workflow requires a `COPILOT_REVIEW_TOKEN` or `PERSONAL_ACCESS_TOKEN` repository secret for the Copilot CLI agent step.
+
 ## Documentation Expectations
 
 - `AGENTS.md` is the map.
