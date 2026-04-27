@@ -55,19 +55,31 @@ jobs:
           pr_number = os.environ["PR_NUMBER"]
           repo = os.environ["REPO"]
 
-          def gh_get(path):
-              req = urllib.request.Request(
-                  f"{GITHUB_API}{path}",
-                  headers={
-                      "Authorization": f"Bearer {token}",
-                      "Accept": "application/vnd.github+json",
-                      "X-GitHub-Api-Version": "2022-11-28",
-                  },
-              )
-              with urllib.request.urlopen(req) as response:
-                  return json.loads(response.read())
+          def gh_get_paged(path):
+              """Fetch all pages of a GitHub API list endpoint."""
+              results = []
+              page = 1
+              while True:
+                  sep = "&" if "?" in path else "?"
+                  req = urllib.request.Request(
+                      f"{GITHUB_API}{path}{sep}per_page=100&page={page}",
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/vnd.github+json",
+                          "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                  )
+                  with urllib.request.urlopen(req) as response:
+                      page_data = json.loads(response.read())
+                  if not page_data:
+                      break
+                  results.extend(page_data)
+                  if len(page_data) < 100:
+                      break
+                  page += 1
+              return results
 
-          reviews = gh_get(f"/repos/{repo}/pulls/{pr_number}/reviews")
+          reviews = gh_get_paged(f"/repos/{repo}/pulls/{pr_number}/reviews")
           automated_count = sum(
               1 for r in reviews
               if isinstance(r.get("body"), str) and r["body"].startswith("@copilot")
