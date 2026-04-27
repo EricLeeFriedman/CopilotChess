@@ -12,6 +12,7 @@ struct Move
     int8      to_file;
     PieceType promotion;    // PIECE_NONE = normal move; PIECE_QUEEN/ROOK/BISHOP/KNIGHT = promotion piece
     bool      is_en_passant;
+    bool      is_castling;  // true when the king castles; ApplyMove moves the rook automatically
 };
 
 // Upper bound on candidate moves in any position.
@@ -31,6 +32,10 @@ struct GameState
     Color side_to_move;
     int8  en_passant_rank; // -1 = no en passant available; 0-7 = rank of the target square
     int8  en_passant_file; // -1 = no en passant available; 0-7 = file of the target square
+    bool  castling_wk;     // White may castle kingside
+    bool  castling_wq;     // White may castle queenside
+    bool  castling_bk;     // Black may castle kingside
+    bool  castling_bq;     // Black may castle queenside
 };
 
 // Initialize game state to the standard chess starting position.
@@ -63,6 +68,18 @@ void GenerateBishopMoves(const GameState* gs, MoveList* list);
 // Combines the rook rays and bishop rays (all eight directions).
 // Does not clear list->count before appending.
 void GenerateQueenMoves(const GameState* gs, MoveList* list);
+
+// Append all candidate king moves for gs->side_to_move to 'list'.
+// Generates moves to all adjacent squares (filtered for board bounds and
+// friendly pieces) and castling moves (kingside and queenside) when the
+// castling rights allow it, the path is clear, and no attacked square is
+// crossed by the king.
+// Does not clear list->count before appending.
+void GenerateKingMoves(const GameState* gs, MoveList* list);
+
+// Return true if (rank, file) is attacked by any piece of by_color.
+// Used internally for castling validation and exposed for check detection.
+bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color);
 
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);

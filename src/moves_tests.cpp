@@ -773,6 +773,463 @@ static bool TestQueen_CapturesEnemy(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// King in center (e4 = rank 3, file 4) — all 8 adjacent moves.
+// ---------------------------------------------------------------------------
+static bool TestKing_CenterMoves(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[3][4] = { PIECE_KING, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (list.count != 8) return false;
+    if (!FindMove(&list, 3, 4, 4, 4)) return false;
+    if (!FindMove(&list, 3, 4, 4, 5)) return false;
+    if (!FindMove(&list, 3, 4, 4, 3)) return false;
+    if (!FindMove(&list, 3, 4, 3, 5)) return false;
+    if (!FindMove(&list, 3, 4, 3, 3)) return false;
+    if (!FindMove(&list, 3, 4, 2, 4)) return false;
+    if (!FindMove(&list, 3, 4, 2, 5)) return false;
+    if (!FindMove(&list, 3, 4, 2, 3)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// King in corner (a1 = rank 0, file 0) — only 3 adjacent moves.
+// ---------------------------------------------------------------------------
+static bool TestKing_CornerMoves(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE };
+    // No castling rights since we cleared the board and king is not on e1.
+    gs->castling_wk = false;
+    gs->castling_wq = false;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (list.count != 3) return false;
+    if (!FindMove(&list, 0, 0, 1, 0)) return false;
+    if (!FindMove(&list, 0, 0, 1, 1)) return false;
+    if (!FindMove(&list, 0, 0, 0, 1)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// King cannot capture a friendly piece.
+// ---------------------------------------------------------------------------
+static bool TestKing_NoFriendlyCapture(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[3][4] = { PIECE_KING,  COLOR_WHITE };
+    gs->board.squares[4][4] = { PIECE_ROOK,  COLOR_WHITE }; // blocks one square
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // (4,4) must not be in the list.
+    if (FindMove(&list, 3, 4, 4, 4)) return false;
+    if (list.count != 7) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// King can capture an enemy piece.
+// ---------------------------------------------------------------------------
+static bool TestKing_EnemyCapture(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[3][4] = { PIECE_KING,  COLOR_WHITE };
+    gs->board.squares[4][4] = { PIECE_ROOK,  COLOR_BLACK };
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (!FindMove(&list, 3, 4, 4, 4)) return false;
+    if (list.count != 8) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: find a castling move in list.
+// ---------------------------------------------------------------------------
+static bool FindCastlingMove(const MoveList* list, int8 fr, int8 ff, int8 tr, int8 tf)
+{
+    for (int32 i = 0; i < list->count; ++i)
+    {
+        const Move& m = list->moves[i];
+        if (m.from_rank == fr && m.from_file == ff &&
+            m.to_rank   == tr && m.to_file   == tf &&
+            m.is_castling)
+            return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// White kingside castling — all conditions met.
+// ---------------------------------------------------------------------------
+static bool TestCastling_WhiteKingside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    gs->castling_wk = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // Castling move: king from e1 (0,4) to g1 (0,6).
+    if (!FindCastlingMove(&list, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// White queenside castling — all conditions met.
+// ---------------------------------------------------------------------------
+static bool TestCastling_WhiteQueenside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE };
+    gs->castling_wq = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // Castling move: king from e1 (0,4) to c1 (0,2).
+    if (!FindCastlingMove(&list, 0, 4, 0, 2)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black kingside castling — all conditions met.
+// ---------------------------------------------------------------------------
+static bool TestCastling_BlackKingside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_ROOK, COLOR_BLACK };
+    gs->side_to_move = COLOR_BLACK;
+    gs->castling_bk  = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // Castling move: king from e8 (7,4) to g8 (7,6).
+    if (!FindCastlingMove(&list, 7, 4, 7, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling blocked: piece standing between king and rook.
+// ---------------------------------------------------------------------------
+static bool TestCastling_BlockedByPiece(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK,   COLOR_WHITE };
+    gs->board.squares[0][6] = { PIECE_BISHOP, COLOR_WHITE }; // blocks kingside path
+    gs->castling_wk = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (FindCastlingMove(&list, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling blocked: king passes through an attacked square.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ThroughAttackedSquare(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    // Black rook on f8 (rank 7, file 5) attacks f1 (rank 0, file 5) — the transit square.
+    gs->board.squares[7][5] = { PIECE_ROOK, COLOR_BLACK };
+    gs->castling_wk = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (FindCastlingMove(&list, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling blocked: the destination square is attacked.
+// ---------------------------------------------------------------------------
+static bool TestCastling_LandingSquareAttacked(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    // Black rook on g8 (rank 7, file 6) attacks g1 (rank 0, file 6) — the landing square.
+    gs->board.squares[7][6] = { PIECE_ROOK, COLOR_BLACK };
+    gs->castling_wk = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (FindCastlingMove(&list, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling blocked: castling right has been revoked.
+// ---------------------------------------------------------------------------
+static bool TestCastling_NoRight(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    gs->castling_wk = false; // right explicitly cleared
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    if (FindCastlingMove(&list, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// ApplyMove for kingside castling moves the rook from h1 to f1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ApplyKingside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+
+    Move m         = {};
+    m.from_rank    = 0; m.from_file    = 4;
+    m.to_rank      = 0; m.to_file      = 6;
+    m.promotion    = PIECE_NONE;
+    m.is_en_passant = false;
+    m.is_castling   = true;
+
+    ApplyMove(gs, &m);
+
+    // King must be on g1 (0,6); rook on f1 (0,5); h1 and e1 empty.
+    if (gs->board.squares[0][6].piece != PIECE_KING)  return false;
+    if (gs->board.squares[0][6].color != COLOR_WHITE) return false;
+    if (gs->board.squares[0][5].piece != PIECE_ROOK)  return false;
+    if (gs->board.squares[0][5].color != COLOR_WHITE) return false;
+    if (gs->board.squares[0][7].piece != PIECE_NONE)  return false;
+    if (gs->board.squares[0][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// ApplyMove for queenside castling moves the rook from a1 to d1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ApplyQueenside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE };
+
+    Move m         = {};
+    m.from_rank    = 0; m.from_file    = 4;
+    m.to_rank      = 0; m.to_file      = 2;
+    m.promotion    = PIECE_NONE;
+    m.is_en_passant = false;
+    m.is_castling   = true;
+
+    ApplyMove(gs, &m);
+
+    // King must be on c1 (0,2); rook on d1 (0,3); a1 and e1 empty.
+    if (gs->board.squares[0][2].piece != PIECE_KING)  return false;
+    if (gs->board.squares[0][2].color != COLOR_WHITE) return false;
+    if (gs->board.squares[0][3].piece != PIECE_ROOK)  return false;
+    if (gs->board.squares[0][3].color != COLOR_WHITE) return false;
+    if (gs->board.squares[0][0].piece != PIECE_NONE)  return false;
+    if (gs->board.squares[0][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling rights revoked after king moves.
+// ---------------------------------------------------------------------------
+static bool TestCastling_RightsRevokedByKingMove(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+
+    Move m         = {};
+    m.from_rank    = 0; m.from_file    = 4;
+    m.to_rank      = 0; m.to_file      = 5; // non-castling king move
+    m.promotion    = PIECE_NONE;
+    m.is_en_passant = false;
+    m.is_castling   = false;
+
+    ApplyMove(gs, &m);
+
+    if (gs->castling_wk) return false;
+    if (gs->castling_wq) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling rights revoked after the h1 rook moves (white kingside).
+// ---------------------------------------------------------------------------
+static bool TestCastling_RightsRevokedByRookMove(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+
+    Move m         = {};
+    m.from_rank    = 0; m.from_file    = 7;
+    m.to_rank      = 3; m.to_file      = 7;
+    m.promotion    = PIECE_NONE;
+    m.is_en_passant = false;
+    m.is_castling   = false;
+
+    ApplyMove(gs, &m);
+
+    if (gs->castling_wk)  return false; // kingside right must be gone
+    if (!gs->castling_wq) return false; // queenside right untouched
+    return true;
+}
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -806,6 +1263,23 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestQueen_OpenBoard);
     RUN_TEST(TestQueen_BlockedByFriendly);
     RUN_TEST(TestQueen_CapturesEnemy);
+
+    RUN_TEST(TestKing_CenterMoves);
+    RUN_TEST(TestKing_CornerMoves);
+    RUN_TEST(TestKing_NoFriendlyCapture);
+    RUN_TEST(TestKing_EnemyCapture);
+
+    RUN_TEST(TestCastling_WhiteKingside);
+    RUN_TEST(TestCastling_WhiteQueenside);
+    RUN_TEST(TestCastling_BlackKingside);
+    RUN_TEST(TestCastling_BlockedByPiece);
+    RUN_TEST(TestCastling_ThroughAttackedSquare);
+    RUN_TEST(TestCastling_LandingSquareAttacked);
+    RUN_TEST(TestCastling_NoRight);
+    RUN_TEST(TestCastling_ApplyKingside);
+    RUN_TEST(TestCastling_ApplyQueenside);
+    RUN_TEST(TestCastling_RightsRevokedByKingMove);
+    RUN_TEST(TestCastling_RightsRevokedByRookMove);
 
     return true;
 }

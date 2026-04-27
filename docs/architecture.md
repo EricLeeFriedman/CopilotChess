@@ -71,7 +71,7 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 - **`Move`** — a single candidate move. Fields: `from_rank`, `from_file`, `to_rank`, `to_file`, `promotion` (`PIECE_NONE` = normal move; `PIECE_QUEEN`/`PIECE_ROOK`/`PIECE_BISHOP`/`PIECE_KNIGHT` = the chosen promotion piece), `is_en_passant`.
 - **`MoveList`** — a fixed-size array of up to `MAX_MOVES_PER_POSITION` (256) `Move` values plus a `count`. Callers zero-initialize and pass a pointer; generator functions append without clearing.
-- **`GameState`** — all mutable state needed between moves: `Board board`, `Color side_to_move`, and `int8 en_passant_rank` / `int8 en_passant_file` (-1 when no en passant is available; otherwise the coordinates of the target square created by the most recent double pawn push).
+- **`GameState`** — all mutable state needed between moves: `Board board`, `Color side_to_move`, `int8 en_passant_rank` / `int8 en_passant_file` (-1 when no en passant is available; otherwise the coordinates of the target square created by the most recent double pawn push), and four castling-rights flags: `castling_wk`, `castling_wq`, `castling_bk`, `castling_bq` (all true at game start; revoked when the relevant king or rook moves or is captured on its home square).
 
 #### Pawn Move Generation
 
@@ -100,6 +100,21 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 `GenerateQueenMoves` is equivalent to running the rook rays and bishop rays in a single pass over the board.
 
+#### King Move Generation
+
+`GenerateKingMoves(const GameState*, MoveList*)` appends all candidate king moves for `gs->side_to_move`:
+
+- **Adjacent moves** — all 8 directions (orthogonal and diagonal), one square at a time. Off-board destinations and squares occupied by a friendly piece are excluded.
+- **Castling** — kingside (`to_file = 6`) and queenside (`to_file = 2`) castling moves are generated when:
+  - The relevant castling-rights flag (`castling_wk` / `castling_wq` / `castling_bk` / `castling_bq`) is true.
+  - All squares between the king and rook are empty (f1/g1 for white kingside; b1/c1/d1 for white queenside; equivalent squares for black).
+  - The king's current square, every transit square, and the landing square are not attacked by the opponent.
+  - Castling moves set `is_castling = true`; `ApplyMove` uses this flag to relocate the rook.
+
+#### Square Attack Detection
+
+`IsSquareAttacked(const Board*, int8 rank, int8 file, Color by_color)` returns `true` when the given square is attacked by any piece of `by_color`. It checks pawn diagonal attacks, knight L-shape attacks, orthogonal rays (rook/queen), diagonal rays (bishop/queen), and king adjacency. Used internally by `GenerateKingMoves` for castling validation and available for higher-level check/checkmate detection.
+
 #### Move Application
 
 `ApplyMove(GameState*, const Move*)` mutates the game state:
@@ -108,8 +123,10 @@ Own legal move generation, check detection, checkmate detection, and any support
 2. For en passant captures, removes the captured pawn from `(from_rank, to_file)`.
 3. Moves the piece from source to destination.
 4. If `promotion != PIECE_NONE`, replaces the pawn with the promoted piece.
-5. If the move is a double pawn push, sets the en passant target to the skipped square.
-6. Advances `side_to_move`.
+5. If `is_castling` is true, moves the rook: h→f for kingside, a→d for queenside.
+6. If the move is a double pawn push, sets the en passant target to the skipped square.
+7. Revokes castling rights when a king or rook moves, or when a rook is captured on its home square.
+8. Advances `side_to_move`.
 
 ### User Interface
 
