@@ -383,6 +383,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          ROUND_COUNT: ${{ steps.check_rounds.outputs.round_count }}
         run: |
           python3 << 'PYEOF'
           import json, os, urllib.request
@@ -390,9 +391,11 @@ jobs:
           token = os.environ["GH_TOKEN"]
           pr = os.environ["PR_NUMBER"]
           repo = os.environ["REPO"]
+          round_count = int(os.environ.get("ROUND_COUNT", "0")) + 1
 
           body = (
-            "@copilot Please address the blocking findings from the automated PR review. "
+            f"@copilot Please address the blocking findings from the automated PR review "
+            f"(review round {round_count}/7). "
             "After pushing fixes, re-run tests and update docs if required."
           )
 
