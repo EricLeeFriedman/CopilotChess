@@ -372,6 +372,47 @@ static bool TestPawn_EnPassantTargetTracking(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// En passant must not be offered when generating moves for the off-turn side.
+// After White's double push it is Black's turn; a second call for COLOR_WHITE
+// must not include the en passant move even though the target square is set.
+// ---------------------------------------------------------------------------
+static bool TestPawn_EnPassantNotOfferedOffTurn(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White pawn on e5 (rank 4, file 4), black pawn on d5 (rank 4, file 3).
+    gs->board.squares[4][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[4][3] = { PIECE_PAWN, COLOR_BLACK };
+
+    // Simulate: Black just made the double push — it is now White's turn.
+    gs->side_to_move    = COLOR_WHITE;
+    gs->en_passant_rank = 5;
+    gs->en_passant_file = 3;
+
+    // White can capture en passant (it is White's turn).
+    MoveList white_list = {};
+    GeneratePawnMoves(gs, COLOR_WHITE, &white_list);
+    if (!FindEnPassantMove(&white_list, 4, 4, 5, 3)) return false;
+
+    // Now force side_to_move to BLACK while keeping the EP target.
+    // Generating WHITE moves off-turn must NOT include the EP move.
+    gs->side_to_move = COLOR_BLACK;
+    MoveList off_turn_list = {};
+    GeneratePawnMoves(gs, COLOR_WHITE, &off_turn_list);
+    if (FindEnPassantMove(&off_turn_list, 4, 4, 5, 3)) return false;
+
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -388,6 +429,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestPawn_Promotion);
     RUN_TEST(TestPawn_ApplyPromotion);
     RUN_TEST(TestPawn_EnPassantTargetTracking);
+    RUN_TEST(TestPawn_EnPassantNotOfferedOffTurn);
 
     return true;
 }

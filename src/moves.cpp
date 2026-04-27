@@ -88,8 +88,11 @@ void GeneratePawnMoves(const GameState* gs, Color color, MoveList* list)
                     cm.is_en_passant = false;
                 }
 
-                // En passant capture.
-                if (gs->en_passant_rank == next_rank && gs->en_passant_file == cf)
+                // En passant capture — only valid for the side currently to move.
+                // The en passant target was set by the opposing side's double push, so
+                // granting it to off-turn move generation would be illegal.
+                if (color == gs->side_to_move &&
+                    gs->en_passant_rank == next_rank && gs->en_passant_file == cf)
                 {
                     ASSERT(list->count < MAX_MOVES_PER_POSITION);
                     Move& ep      = list->moves[list->count++];
