@@ -307,33 +307,51 @@ jobs:
               if len(lines) >= 3:
                   cleaned_content = "\n".join(lines[1:-1]).strip()
 
-          try:
-              review = json.loads(cleaned_content)
-          except json.JSONDecodeError as exc:
-              start = cleaned_content.find("{")
-              end = cleaned_content.rfind("}")
-              if start >= 0 and end > start:
-                  candidate = cleaned_content[start:end + 1]
-                  try:
-                      review = json.loads(candidate)
-                  except json.JSONDecodeError:
+          FALLBACK_REVIEW = {
+              "event": "REQUEST_CHANGES",
+              "body": "@copilot Automated review could not parse structured output. Manual inspection required.",
+              "blocking": [],
+              "comments": [],
+          }
+
+          def parse_review(text):
+              """Parse text as JSON and return a validated review dict.
+
+              Returns a fallback REQUEST_CHANGES dict on any parse or schema error.
+              """
+              try:
+                  parsed = json.loads(text)
+              except json.JSONDecodeError as exc:
+                  start = text.find("{")
+                  end = text.rfind("}")
+                  if start >= 0 and end > start:
+                      try:
+                          parsed = json.loads(text[start:end + 1])
+                      except json.JSONDecodeError:
+                          print(f"Copilot CLI response is not valid JSON: {exc}")
+                          print(text[:1000])
+                          return dict(FALLBACK_REVIEW)
+                  else:
                       print(f"Copilot CLI response is not valid JSON: {exc}")
-                      print(cleaned_content[:1000])
-                      review = {
-                          "event": "REQUEST_CHANGES",
-                          "body": "@copilot Automated review could not parse structured output. Manual inspection required.",
-                          "blocking": [],
-                          "comments": [],
-                      }
-              else:
-                  print(f"Copilot CLI response is not valid JSON: {exc}")
-                  print(cleaned_content[:1000])
-                  review = {
-                      "event": "REQUEST_CHANGES",
-                      "body": "@copilot Automated review could not parse structured output. Manual inspection required.",
-                      "blocking": [],
-                      "comments": [],
-                  }
+                      print(text[:1000])
+                      return dict(FALLBACK_REVIEW)
+
+              # Schema validation: must be a dict with list-typed blocking/comments.
+              if not isinstance(parsed, dict):
+                  print(f"Copilot CLI response is valid JSON but not an object (got {type(parsed).__name__}). Using fallback.")
+                  return dict(FALLBACK_REVIEW)
+
+              for key in ("blocking", "comments"):
+                  val = parsed.get(key)
+                  if val is None:
+                      parsed[key] = []
+                  elif not isinstance(val, list):
+                      print(f"WARNING: '{key}' is not a list (got {type(val).__name__}). Treating as empty.")
+                      parsed[key] = []
+
+              return parsed
+
+          review = parse_review(cleaned_content)
 
           review["body"] = ensure_prefix(review.get("body", ""))
           for entry in list(review.get("blocking", [])) + list(review.get("comments", [])):
