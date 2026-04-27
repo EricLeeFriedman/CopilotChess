@@ -143,8 +143,57 @@ void GeneratePawnMoves(const GameState* gs, MoveList* list)
     }
 }
 
-void ApplyMove(GameState* gs, const Move* move)
+void GenerateKnightMoves(const GameState* gs, MoveList* list)
 {
+    ASSERT(gs);
+    ASSERT(list);
+
+    const Color  color = gs->side_to_move;
+    const Board* board = &gs->board;
+
+    static const int8 k_offsets[8][2] =
+    {
+        { 2,  1 }, { 2, -1 },
+        {-2,  1 }, {-2, -1 },
+        { 1,  2 }, { 1, -2 },
+        {-1,  2 }, {-1, -2 },
+    };
+
+    for (int32 rank = 0; rank < 8; ++rank)
+    {
+        for (int32 file = 0; file < 8; ++file)
+        {
+            const Square sq = board->squares[rank][file];
+            if (sq.piece != PIECE_KNIGHT || sq.color != color) continue;
+
+            const int8 r = (int8)rank;
+            const int8 f = (int8)file;
+
+            for (int32 i = 0; i < 8; ++i)
+            {
+                const int8 tr = r + k_offsets[i][0];
+                const int8 tf = f + k_offsets[i][1];
+
+                if (tr < 0 || tr >= 8) continue;
+                if (tf < 0 || tf >= 8) continue;
+
+                const Square target = board->squares[tr][tf];
+                if (target.piece != PIECE_NONE && target.color == color) continue;
+
+                ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                Move& m      = list->moves[list->count++];
+                m.from_rank  = r;
+                m.from_file  = f;
+                m.to_rank    = tr;
+                m.to_file    = tf;
+                m.promotion  = PIECE_NONE;
+                m.is_en_passant = false;
+            }
+        }
+    }
+}
+
+void ApplyMove(GameState* gs, const Move* move){
     ASSERT(gs);
     ASSERT(move);
 

@@ -376,6 +376,123 @@ static bool TestPawn_EnPassantTargetTracking(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Knight in the center (e4 = rank 3, file 4) — expects all 8 moves.
+// ---------------------------------------------------------------------------
+static bool TestKnight_CenterMoves(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White knight on e4 (rank 3, file 4).
+    gs->board.squares[3][4] = { PIECE_KNIGHT, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateKnightMoves(gs, &list);
+
+    if (list.count != 8) return false;
+    if (!FindMove(&list, 3, 4, 5, 5)) return false;
+    if (!FindMove(&list, 3, 4, 5, 3)) return false;
+    if (!FindMove(&list, 3, 4, 1, 5)) return false;
+    if (!FindMove(&list, 3, 4, 1, 3)) return false;
+    if (!FindMove(&list, 3, 4, 4, 6)) return false;
+    if (!FindMove(&list, 3, 4, 4, 2)) return false;
+    if (!FindMove(&list, 3, 4, 2, 6)) return false;
+    if (!FindMove(&list, 3, 4, 2, 2)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Knight in corner (a1 = rank 0, file 0) — expects only 2 moves.
+// ---------------------------------------------------------------------------
+static bool TestKnight_CornerMoves(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White knight on a1 (rank 0, file 0).
+    gs->board.squares[0][0] = { PIECE_KNIGHT, COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateKnightMoves(gs, &list);
+
+    if (list.count != 2) return false;
+    if (!FindMove(&list, 0, 0, 2, 1)) return false;
+    if (!FindMove(&list, 0, 0, 1, 2)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Knight cannot capture a friendly piece.
+// ---------------------------------------------------------------------------
+static bool TestKnight_NoFriendlyCapture(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White knight on e4 (rank 3, file 4); white rook on f6 (rank 5, file 5).
+    gs->board.squares[3][4] = { PIECE_KNIGHT, COLOR_WHITE };
+    gs->board.squares[5][5] = { PIECE_ROOK,   COLOR_WHITE };
+
+    MoveList list = {};
+    GenerateKnightMoves(gs, &list);
+
+    // f6 must not appear in the move list.
+    if (FindMove(&list, 3, 4, 5, 5)) return false;
+    // All other 7 squares should still be reachable.
+    if (list.count != 7) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Knight can capture an enemy piece.
+// ---------------------------------------------------------------------------
+static bool TestKnight_EnemyCapture(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White knight on e4 (rank 3, file 4); black rook on f6 (rank 5, file 5).
+    gs->board.squares[3][4] = { PIECE_KNIGHT, COLOR_WHITE };
+    gs->board.squares[5][5] = { PIECE_ROOK,   COLOR_BLACK };
+
+    MoveList list = {};
+    GenerateKnightMoves(gs, &list);
+
+    // f6 must appear — enemy capture is legal.
+    if (!FindMove(&list, 3, 4, 5, 5)) return false;
+    if (list.count != 8) return false;
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -392,6 +509,11 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestPawn_Promotion);
     RUN_TEST(TestPawn_ApplyPromotion);
     RUN_TEST(TestPawn_EnPassantTargetTracking);
+
+    RUN_TEST(TestKnight_CenterMoves);
+    RUN_TEST(TestKnight_CornerMoves);
+    RUN_TEST(TestKnight_NoFriendlyCapture);
+    RUN_TEST(TestKnight_EnemyCapture);
 
     return true;
 }

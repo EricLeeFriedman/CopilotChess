@@ -41,5 +41,11 @@ void InitGameState(GameState* gs);
 // Does not clear list->count before appending.
 void GeneratePawnMoves(const GameState* gs, MoveList* list);
 
+// Append all candidate knight moves for gs->side_to_move to 'list'.
+// Knights jump in L-shapes and ignore blocking pieces. Filters off-board
+// squares and squares occupied by friendly pieces.
+// Does not clear list->count before appending.
+void GenerateKnightMoves(const GameState* gs, MoveList* list);
+
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);

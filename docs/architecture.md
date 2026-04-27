@@ -70,7 +70,7 @@ Own legal move generation, check detection, checkmate detection, and any support
 `src/moves.h` defines the core types used for move generation and application:
 
 - **`Move`** — a single candidate move. Fields: `from_rank`, `from_file`, `to_rank`, `to_file`, `promotion` (`PIECE_NONE` = normal move; `PIECE_QUEEN`/`PIECE_ROOK`/`PIECE_BISHOP`/`PIECE_KNIGHT` = the chosen promotion piece), `is_en_passant`.
-- **`MoveList`** — a fixed-size array of up to `MAX_MOVES_PER_POSITION` (256) `Move` values plus a `count`. Callers zero-initialize and pass a pointer; `GeneratePawnMoves` appends without clearing.
+- **`MoveList`** — a fixed-size array of up to `MAX_MOVES_PER_POSITION` (256) `Move` values plus a `count`. Callers zero-initialize and pass a pointer; generator functions append without clearing.
 - **`GameState`** — all mutable state needed between moves: `Board board`, `Color side_to_move`, and `int8 en_passant_rank` / `int8 en_passant_file` (-1 when no en passant is available; otherwise the coordinates of the target square created by the most recent double pawn push).
 
 #### Pawn Move Generation
@@ -82,6 +82,14 @@ Own legal move generation, check detection, checkmate detection, and any support
 - **Diagonal capture** — one square diagonally forward when an enemy piece occupies that square.
 - **En passant** — diagonal forward capture onto `(en_passant_rank, en_passant_file)` when set. The `is_en_passant` flag is set on the resulting `Move`.
 - **Promotion** — any move that reaches the back rank (rank 7 for White, rank 0 for Black) generates four moves, one per legal promotion piece: queen, rook, bishop, and knight.
+
+#### Knight Move Generation
+
+`GenerateKnightMoves(const GameState*, MoveList*)` appends all candidate knight moves for `gs->side_to_move`:
+
+- **L-shape jumps** — all 8 offsets: (±2, ±1) and (±1, ±2). Knights ignore blocking pieces.
+- **Board filtering** — destinations outside the 8×8 grid are discarded.
+- **Friendly-piece filtering** — destinations occupied by a piece of `side_to_move` are discarded. Destinations occupied by an enemy piece are legal (capture).
 
 #### Move Application
 
