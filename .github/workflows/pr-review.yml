@@ -381,11 +381,17 @@ jobs:
                           )
                           return dict(FALLBACK_REVIEW)
                   try:
-                      int(entry["line"])
+                      line_val = int(entry["line"])
                   except (ValueError, TypeError):
                       print(
                           f"Schema error: blocking[{idx}]['line'] cannot be converted to int "
                           f"(got {type(entry['line']).__name__}). Falling back to REQUEST_CHANGES."
+                      )
+                      return dict(FALLBACK_REVIEW)
+                  if line_val <= 0:
+                      print(
+                          f"Schema error: blocking[{idx}]['line'] must be a positive integer "
+                          f"(got {line_val}). Falling back to REQUEST_CHANGES."
                       )
                       return dict(FALLBACK_REVIEW)
 
