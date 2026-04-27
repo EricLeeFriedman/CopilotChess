@@ -938,6 +938,30 @@ static bool TestIsInCheck_BlockedByPiece(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// IsInCheck: adjacent enemy king attacks — kings next to each other.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_ByKing(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e4 (rank 3, file 4); black king on f5 (rank 4, file 5) — adjacent.
+    gs->board.squares[3][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[4][5] = { PIECE_KING, COLOR_BLACK };
+
+    if (!IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    if (!IsInCheck(&gs->board, COLOR_BLACK)) return false;
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -979,6 +1003,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestIsInCheck_ByRook);
     RUN_TEST(TestIsInCheck_ByQueen);
     RUN_TEST(TestIsInCheck_BlockedByPiece);
+    RUN_TEST(TestIsInCheck_ByKing);
 
     return true;
 }

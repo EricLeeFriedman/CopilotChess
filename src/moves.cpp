@@ -388,5 +388,27 @@ bool IsInCheck(const Board* board, Color color)
             return true;
         }
     }
+
+    // Check whether an adjacent enemy king attacks this king's square.
+    // (Not covered by the generators above, which only generate moves for the
+    // side_to_move king, not attacks on the opposing king.)
+    static const int8 k_king_offsets[8][2] =
+    {
+        { 1,  0 }, { -1,  0 },
+        { 0,  1 }, {  0, -1 },
+        { 1,  1 }, {  1, -1 },
+        {-1,  1 }, { -1, -1 },
+    };
+    for (int32 i = 0; i < 8; ++i)
+    {
+        const int8 r = (int8)(king_rank + k_king_offsets[i][0]);
+        const int8 f = (int8)(king_file + k_king_offsets[i][1]);
+        if (r < 0 || r >= 8 || f < 0 || f >= 8) continue;
+        const Square sq = board->squares[r][f];
+        if (sq.piece == PIECE_KING && sq.color == enemy)
+        {
+            return true;
+        }
+    }
     return false;
 }
