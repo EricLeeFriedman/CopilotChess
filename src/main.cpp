@@ -77,6 +77,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
             DispatchMessage(&message);
         }
 
+        if (!running) break;
+
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
         PresentFrame(&g_Renderer, window);
