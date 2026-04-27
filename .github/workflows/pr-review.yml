@@ -223,22 +223,30 @@ jobs:
           {
             "event": "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
             "body": "@copilot <overall summary>",
+            "blocking": [
+              {
+                "path": "<file path relative to repo root>",
+                "line": <positive integer — line in the new file visible in the diff>,
+                "body": "@copilot <required fix>"
+              }
+            ],
             "comments": [
               {
                 "path": "<file path relative to repo root>",
                 "line": <positive integer — line in the new file visible in the diff>,
-                "body": "@copilot <specific finding>"
+                "body": "@copilot <optional observation>"
               }
             ]
           }
 
           Rules:
           - Every "body" value MUST start with "@copilot ".
-          - Use REQUEST_CHANGES when you find real issues.
-          - Use APPROVE only when the change is clearly correct and complete.
-          - Use COMMENT for observations that do not require a change.
-          - Only include inline comments for findings tied to a specific file and line that is present in the diff.
-          - The "comments" array may be empty.
+          - "blocking" is ONLY for findings that REQUIRE a fix: real bugs, architecture or chess-rule violations, missing required tests, and missing required doc updates. Set "event" to "REQUEST_CHANGES" when this array is non-empty.
+          - "comments" is ONLY for optional, non-blocking observations that do not require any change.
+          - Use APPROVE only when the change is clearly correct and complete with no blocking issues.
+          - Only include inline entries in "blocking" or "comments" for findings tied to a specific file and line that is present in the diff.
+          - Both arrays may be empty.
+          - The workflow enforces: if "blocking" is non-empty the review is posted as REQUEST_CHANGES regardless of "event". Keep "event" consistent with your arrays.
           - Do not include markdown fences or any prose before or after the JSON.
           EOF
 
@@ -312,33 +320,65 @@ jobs:
                       print(f"Copilot CLI response is not valid JSON: {exc}")
                       print(cleaned_content[:1000])
                       review = {
-                          "event": "COMMENT",
-                          "body": "@copilot Automated review could not parse structured output.",
+                          "event": "REQUEST_CHANGES",
+                          "body": "@copilot Automated review could not parse structured output. Manual inspection required.",
+                          "blocking": [],
                           "comments": [],
                       }
               else:
                   print(f"Copilot CLI response is not valid JSON: {exc}")
                   print(cleaned_content[:1000])
                   review = {
-                      "event": "COMMENT",
-                      "body": "@copilot Automated review could not parse structured output.",
+                      "event": "REQUEST_CHANGES",
+                      "body": "@copilot Automated review could not parse structured output. Manual inspection required.",
+                      "blocking": [],
                       "comments": [],
                   }
 
           review["body"] = ensure_prefix(review.get("body", ""))
-          for comment in review.get("comments", []):
-              comment["body"] = ensure_prefix(comment.get("body", ""))
+          for entry in list(review.get("blocking", [])) + list(review.get("comments", [])):
+              entry["body"] = ensure_prefix(entry.get("body", ""))
 
-          if review.get("event") not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
-              review["event"] = "COMMENT"
+          # Determine the final event based on machine-checkable blocking findings.
+          has_blocking = bool(review.get("blocking"))
+          stated_event = review.get("event", "COMMENT")
 
-          if review.get("event") == "APPROVE":
-              review["event"] = "COMMENT"
+          if stated_event not in {"REQUEST_CHANGES", "COMMENT", "APPROVE"}:
+              stated_event = "COMMENT"
+
+          if has_blocking and stated_event != "REQUEST_CHANGES":
+              print(
+                  f"WARNING: Agent stated event={stated_event!r} but blocking findings are present. "
+                  "Coercing to REQUEST_CHANGES."
+              )
+              final_event = "REQUEST_CHANGES"
+          elif not has_blocking and stated_event == "REQUEST_CHANGES":
+              print(
+                  "WARNING: Agent stated event=REQUEST_CHANGES but no blocking findings present. "
+                  "Keeping REQUEST_CHANGES to err on the side of caution."
+              )
+              final_event = "REQUEST_CHANGES"
+          elif stated_event == "APPROVE":
+              final_event = "COMMENT"
               review["body"] = ensure_prefix(
                   (review.get("body") or "") + "\n\n(Approval converted to COMMENT: Actions cannot approve pull requests.)"
               )
+          else:
+              final_event = stated_event
+
+          review["event"] = final_event
 
           inline_comments = []
+          for comment in review.get("blocking", []):
+              try:
+                  inline_comments.append({
+                      "path": str(comment["path"]),
+                      "line": int(comment["line"]),
+                      "side": "RIGHT",
+                      "body": str(comment["body"]),
+                  })
+              except (KeyError, ValueError, TypeError):
+                  pass
           for comment in review.get("comments", []):
               try:
                   inline_comments.append({
