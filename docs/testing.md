@@ -42,7 +42,7 @@ Each subsystem gets a dedicated test file named `<subsystem>_tests.cpp` (e.g., `
 | `src/tests.h` | `RUN_TEST` macro shared by all test files |
 | `src/memory_tests.cpp` | Tests for the memory and arena subsystem |
 | `src/board_tests.cpp` | Tests for board initialisation |
-| `src/moves_tests.cpp` | Tests for pawn move generation, knight move generation, rook/bishop/queen (sliding piece) move generation, king move generation (adjacent moves filtered for attacked squares including X-ray attacks through the king's own origin, castling), and move application |
+| `src/moves_tests.cpp` | Tests for pawn move generation, knight move generation, rook/bishop/queen (sliding piece) move generation, king move generation, move application (including en passant, promotion, and castling), check detection (`IsInCheck`) including pawn-forward-push-is-not-check, legal move filtering (`GetLegalMoves`) including pin scenarios, the pinned-enemy-attacker regression (a pinned enemy knight still blocks a legal king step per FIDE Article 3.8), and the king-capture exclusion regression (legal moves never include capturing the opponent's king), castling generation and rights tracking (`GenerateCastlingMoves`), and the discovered-attack regression for castling (an enemy rook masked by the king on its starting square still prohibits castling through the transit squares it would control once the king moves) |
 | `src/renderer_tests.cpp` | Tests for the software renderer: `ClearBuffer` pixel fill, `DrawRect` basic fill, clipping on all four edges, fully out-of-bounds rects, and zero-size rects |
 | `src/main.cpp` `RunTests()` | Top-level runner — calls each `RunXxxTests` |
 
