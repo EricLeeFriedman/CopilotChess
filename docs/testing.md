@@ -43,6 +43,7 @@ Each subsystem gets a dedicated test file named `<subsystem>_tests.cpp` (e.g., `
 | `src/memory_tests.cpp` | Tests for the memory and arena subsystem |
 | `src/board_tests.cpp` | Tests for board initialisation |
 | `src/moves_tests.cpp` | Tests for pawn move generation, knight move generation, rook/bishop/queen (sliding piece) move generation, move application, and check detection (`IsInCheck`) |
+| `src/renderer_tests.cpp` | Tests for the software renderer: `ClearBuffer` pixel fill, `DrawRect` basic fill, clipping on all four edges, fully out-of-bounds rects, and zero-size rects |
 | `src/main.cpp` `RunTests()` | Top-level runner — calls each `RunXxxTests` |
 
 ## Execution Expectations

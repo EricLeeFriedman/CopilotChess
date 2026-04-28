@@ -21,6 +21,7 @@ CopilotChess is a Windows-only chess project built to exercise harness engineeri
 - Copilot cloud-agent setup is targeted at a **self-hosted Windows x64 runner**.
 - Board representation (`src\board.h`, `src\board.cpp`) and memory arena subsystem (`src\memory.h`, `src\memory.cpp`) are implemented and tested.
 - Pawn move generation and move application (`src\moves.h`, `src\moves.cpp`) are implemented: single push, double push, diagonal capture, en passant, and all four under-promotions (Q/R/B/N). 11 in-application tests cover these rules.
+- Software renderer (`src\renderer.h`, `src\renderer.cpp`) is implemented end-to-end: BGRA pixel buffer allocated from the renderer arena, cleared each frame, and presented to the window via `StretchDIBits`. `DrawRect` is available for filled rectangles with bounds clipping. 8 in-application tests cover buffer fill and clipping.
 
 ## Project Goals
 
