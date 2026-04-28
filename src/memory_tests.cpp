@@ -145,19 +145,22 @@ static bool TestMemory_ArenasAreContiguous(void)
     return true;
 }
 
-bool RunMemoryTests(AppMemory* memory)
+static const TestEntry k_MemoryTests[] = {
+    TEST_ENTRY(TestArena_BasicPush),
+    TEST_ENTRY(TestArena_NoPushOverlap),
+    TEST_ENTRY(TestArena_AlignmentPadding),
+    TEST_ENTRY(TestArena_ArrayPush),
+    TEST_ENTRY(TestArena_PushToExactBoundary),
+    TEST_ENTRY(TestArena_ResetRestoresOffset),
+    TEST_ENTRY(TestArena_OverflowDetectable),
+    TEST_ENTRY(TestMemory_ArenasCoverFullBlock),
+    TEST_ENTRY(TestMemory_ArenasAreContiguous),
+};
+
+void RunMemoryTests(AppMemory* memory, int32* passed, int32* total)
 {
     s_Memory = memory;
-
-    RUN_TEST(TestArena_BasicPush);
-    RUN_TEST(TestArena_NoPushOverlap);
-    RUN_TEST(TestArena_AlignmentPadding);
-    RUN_TEST(TestArena_ArrayPush);
-    RUN_TEST(TestArena_PushToExactBoundary);
-    RUN_TEST(TestArena_ResetRestoresOffset);
-    RUN_TEST(TestArena_OverflowDetectable);
-    RUN_TEST(TestMemory_ArenasCoverFullBlock);
-    RUN_TEST(TestMemory_ArenasAreContiguous);
-
-    return true;
+    RunTestArray(k_MemoryTests, sizeof(k_MemoryTests) / sizeof(k_MemoryTests[0]),
+                 passed, total);
 }
+

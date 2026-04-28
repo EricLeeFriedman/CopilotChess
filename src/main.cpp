@@ -100,17 +100,25 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
     return DefWindowProc(window, message, wparam, lparam);
 }
 
-bool RunMemoryTests(AppMemory* memory);
-bool RunBoardTests(AppMemory* memory);
-bool RunMovesTests(AppMemory* memory);
-bool RunRendererTests(AppMemory* memory);
+void RunMemoryTests(AppMemory* memory, int32* passed, int32* total);
+void RunBoardTests(AppMemory* memory, int32* passed, int32* total);
+void RunMovesTests(AppMemory* memory, int32* passed, int32* total);
+void RunRendererTests(AppMemory* memory, int32* passed, int32* total);
 
 static bool RunTests(void)
 {
-    if (!RunMemoryTests(&g_Memory))   return false;
-    if (!RunBoardTests(&g_Memory))    return false;
-    if (!RunMovesTests(&g_Memory))    return false;
-    if (!RunRendererTests(&g_Memory)) return false;
-    return true;
+    int32 passed = 0;
+    int32 total  = 0;
+
+    RunMemoryTests(&g_Memory,   &passed, &total);
+    RunBoardTests(&g_Memory,    &passed, &total);
+    RunMovesTests(&g_Memory,    &passed, &total);
+    RunRendererTests(&g_Memory, &passed, &total);
+
+    uint8 summary[64];
+    wsprintfA((LPSTR)summary, "%d/%d tests passed\n", passed, total);
+    OutputDebugStringA((const char*)summary);
+
+    return passed == total;
 }
 

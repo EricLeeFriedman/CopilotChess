@@ -117,17 +117,19 @@ static bool TestBoard_TotalPieceCount(void)
     return total == 32;
 }
 
-bool RunBoardTests(AppMemory* memory)
+static const TestEntry k_BoardTests[] = {
+    TEST_ENTRY(TestBoard_WhiteBackRank),
+    TEST_ENTRY(TestBoard_WhitePawnRank),
+    TEST_ENTRY(TestBoard_EmptyRanks),
+    TEST_ENTRY(TestBoard_BlackPawnRank),
+    TEST_ENTRY(TestBoard_BlackBackRank),
+    TEST_ENTRY(TestBoard_TotalPieceCount),
+};
+
+void RunBoardTests(AppMemory* memory, int32* passed, int32* total)
 {
     ASSERT(memory);
     s_Memory = memory;
-
-    RUN_TEST(TestBoard_WhiteBackRank);
-    RUN_TEST(TestBoard_WhitePawnRank);
-    RUN_TEST(TestBoard_EmptyRanks);
-    RUN_TEST(TestBoard_BlackPawnRank);
-    RUN_TEST(TestBoard_BlackBackRank);
-    RUN_TEST(TestBoard_TotalPieceCount);
-
-    return true;
+    RunTestArray(k_BoardTests, sizeof(k_BoardTests) / sizeof(k_BoardTests[0]),
+                 passed, total);
 }
