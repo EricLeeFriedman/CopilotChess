@@ -209,8 +209,12 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
         case WM_CAPTURECHANGED:
         {
             // The OS revoked mouse capture (e.g. Alt+Tab or a modal dialog).
-            // Cancel any active drag so the piece doesn't stay stuck floating.
-            InputCancelDrag(g_InputState);
+            // Only cancel if a drag is in progress; do NOT cancel when in
+            // pending_promotion state, because that state deliberately releases
+            // capture (via ReleaseCapture in WM_LBUTTONUP) before the picker
+            // click arrives, so WM_CAPTURECHANGED is expected and benign there.
+            if (g_InputState->dragging)
+                InputCancelDrag(g_InputState);
         } return 0;
     }
 
