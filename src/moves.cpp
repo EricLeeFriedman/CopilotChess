@@ -8,9 +8,13 @@ void InitGameState(GameState* gs)
 {
     ASSERT(gs);
     InitBoard(&gs->board);
-    gs->side_to_move    = COLOR_WHITE;
-    gs->en_passant_rank = -1;
-    gs->en_passant_file = -1;
+    gs->side_to_move             = COLOR_WHITE;
+    gs->en_passant_rank          = -1;
+    gs->en_passant_file          = -1;
+    gs->castling_white_kingside  = true;
+    gs->castling_white_queenside = true;
+    gs->castling_black_kingside  = true;
+    gs->castling_black_queenside = true;
 }
 
 void GeneratePawnMoves(const GameState* gs, MoveList* list)
@@ -347,12 +351,127 @@ void GenerateKingMoves(const GameState* gs, MoveList* list)
 }
 
 
+// Returns true if the given square is attacked by any piece of 'attacker' on 'board'.
+static bool IsSquareAttackedBy(const Board* board, int8 rank, int8 file, Color attacker)
+{
+    GameState temp_gs;
+    temp_gs.board                    = *board;
+    temp_gs.side_to_move             = attacker;
+    temp_gs.en_passant_rank          = -1;
+    temp_gs.en_passant_file          = -1;
+    temp_gs.castling_white_kingside  = false;
+    temp_gs.castling_white_queenside = false;
+    temp_gs.castling_black_kingside  = false;
+    temp_gs.castling_black_queenside = false;
+
+    MoveList attacks = {};
+    GeneratePawnMoves  (&temp_gs, &attacks);
+    GenerateKnightMoves(&temp_gs, &attacks);
+    GenerateRookMoves  (&temp_gs, &attacks);
+    GenerateBishopMoves(&temp_gs, &attacks);
+    GenerateQueenMoves (&temp_gs, &attacks);
+    GenerateKingMoves  (&temp_gs, &attacks);
+
+    for (int32 i = 0; i < attacks.count; ++i)
+    {
+        if (attacks.moves[i].to_rank == rank &&
+            attacks.moves[i].to_file == file)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GenerateCastlingMoves(const GameState* gs, MoveList* list)
+{
+    ASSERT(gs);
+    ASSERT(list);
+
+    const Color  color     = gs->side_to_move;
+    const Board* board     = &gs->board;
+    const Color  enemy     = (color == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
+    const int8   back_rank = (color == COLOR_WHITE) ? 0 : 7;
+
+    // Helper: castle if rights are set, the pieces are in position, path is clear,
+    // and the king neither starts, passes through, nor lands on an attacked square.
+
+    // Kingside castling: king from e-file (4) to g-file (6); rook from h-file (7) to f-file (5).
+    const bool ks_right = (color == COLOR_WHITE) ? gs->castling_white_kingside
+                                                  : gs->castling_black_kingside;
+    if (ks_right)
+    {
+        if (board->squares[back_rank][4].piece == PIECE_KING &&
+            board->squares[back_rank][4].color == color      &&
+            board->squares[back_rank][7].piece == PIECE_ROOK &&
+            board->squares[back_rank][7].color == color)
+        {
+            // f and g files must be empty.
+            if (board->squares[back_rank][5].piece == PIECE_NONE &&
+                board->squares[back_rank][6].piece == PIECE_NONE)
+            {
+                // King must not start in check, pass through check, or land in check.
+                if (!IsSquareAttackedBy(board, back_rank, 4, enemy) &&
+                    !IsSquareAttackedBy(board, back_rank, 5, enemy) &&
+                    !IsSquareAttackedBy(board, back_rank, 6, enemy))
+                {
+                    ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                    Move& m         = list->moves[list->count++];
+                    m.from_rank     = back_rank;
+                    m.from_file     = 4;
+                    m.to_rank       = back_rank;
+                    m.to_file       = 6;
+                    m.promotion     = PIECE_NONE;
+                    m.is_en_passant = false;
+                    m.is_castling   = true;
+                }
+            }
+        }
+    }
+
+    // Queenside castling: king from e-file (4) to c-file (2); rook from a-file (0) to d-file (3).
+    const bool qs_right = (color == COLOR_WHITE) ? gs->castling_white_queenside
+                                                  : gs->castling_black_queenside;
+    if (qs_right)
+    {
+        if (board->squares[back_rank][4].piece == PIECE_KING &&
+            board->squares[back_rank][4].color == color      &&
+            board->squares[back_rank][0].piece == PIECE_ROOK &&
+            board->squares[back_rank][0].color == color)
+        {
+            // d, c, and b files must be empty.
+            if (board->squares[back_rank][3].piece == PIECE_NONE &&
+                board->squares[back_rank][2].piece == PIECE_NONE &&
+                board->squares[back_rank][1].piece == PIECE_NONE)
+            {
+                // King must not start in check, pass through d-file, or land on c-file under attack.
+                // (The b-file only needs to be empty, not unattacked.)
+                if (!IsSquareAttackedBy(board, back_rank, 4, enemy) &&
+                    !IsSquareAttackedBy(board, back_rank, 3, enemy) &&
+                    !IsSquareAttackedBy(board, back_rank, 2, enemy))
+                {
+                    ASSERT(list->count < MAX_MOVES_PER_POSITION);
+                    Move& m         = list->moves[list->count++];
+                    m.from_rank     = back_rank;
+                    m.from_file     = 4;
+                    m.to_rank       = back_rank;
+                    m.to_file       = 2;
+                    m.promotion     = PIECE_NONE;
+                    m.is_en_passant = false;
+                    m.is_castling   = true;
+                }
+            }
+        }
+    }
+}
+
 void ApplyMove(GameState* gs, const Move* move){
     ASSERT(gs);
     ASSERT(move);
 
     Board*       board        = &gs->board;
     const Square moving_piece = board->squares[move->from_rank][move->from_file];
+    const Square captured     = board->squares[move->to_rank][move->to_file];
 
     // Clear en passant; will be re-set below if this is a double pawn push.
     gs->en_passant_rank = -1;
@@ -375,6 +494,17 @@ void ApplyMove(GameState* gs, const Move* move){
         board->squares[move->to_rank][move->to_file].piece = move->promotion;
     }
 
+    // Castling: also slide the rook to its new square.
+    // Kingside: rook from h-file (7) to f-file (5).
+    // Queenside: rook from a-file (0) to d-file (3).
+    if (move->is_castling)
+    {
+        const int8 rook_from_file = (move->to_file == 6) ? 7 : 0;
+        const int8 rook_to_file   = (move->to_file == 6) ? 5 : 3;
+        board->squares[move->to_rank][rook_to_file]   = board->squares[move->to_rank][rook_from_file];
+        board->squares[move->to_rank][rook_from_file] = { PIECE_NONE, COLOR_NONE };
+    }
+
     // Double pawn push: record the skipped square as the en passant target.
     if (moving_piece.piece == PIECE_PAWN)
     {
@@ -384,6 +514,39 @@ void ApplyMove(GameState* gs, const Move* move){
             gs->en_passant_rank = (move->from_rank + move->to_rank) / 2;
             gs->en_passant_file = move->from_file;
         }
+    }
+
+    // Clear castling rights when the king moves.
+    if (moving_piece.piece == PIECE_KING)
+    {
+        if (moving_piece.color == COLOR_WHITE)
+        {
+            gs->castling_white_kingside  = false;
+            gs->castling_white_queenside = false;
+        }
+        else
+        {
+            gs->castling_black_kingside  = false;
+            gs->castling_black_queenside = false;
+        }
+    }
+
+    // Clear castling rights when a rook departs its starting square.
+    if (moving_piece.piece == PIECE_ROOK)
+    {
+        if (move->from_rank == 0 && move->from_file == 0) gs->castling_white_queenside = false;
+        if (move->from_rank == 0 && move->from_file == 7) gs->castling_white_kingside  = false;
+        if (move->from_rank == 7 && move->from_file == 0) gs->castling_black_queenside = false;
+        if (move->from_rank == 7 && move->from_file == 7) gs->castling_black_kingside  = false;
+    }
+
+    // Clear castling rights when a rook is captured on its starting square.
+    if (captured.piece == PIECE_ROOK)
+    {
+        if (move->to_rank == 0 && move->to_file == 0) gs->castling_white_queenside = false;
+        if (move->to_rank == 0 && move->to_file == 7) gs->castling_white_kingside  = false;
+        if (move->to_rank == 7 && move->to_file == 0) gs->castling_black_queenside = false;
+        if (move->to_rank == 7 && move->to_file == 7) gs->castling_black_kingside  = false;
     }
 
     // Advance turn.
@@ -418,10 +581,14 @@ bool IsInCheck(const Board* board, Color color)
     // the existing move generators.
     const Color enemy = (color == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
     GameState temp_gs;
-    temp_gs.board           = *board;
-    temp_gs.side_to_move    = enemy;
-    temp_gs.en_passant_rank = -1;
-    temp_gs.en_passant_file = -1;
+    temp_gs.board                    = *board;
+    temp_gs.side_to_move             = enemy;
+    temp_gs.en_passant_rank          = -1;
+    temp_gs.en_passant_file          = -1;
+    temp_gs.castling_white_kingside  = false;
+    temp_gs.castling_white_queenside = false;
+    temp_gs.castling_black_kingside  = false;
+    temp_gs.castling_black_queenside = false;
 
     MoveList attacks = {};
     GeneratePawnMoves  (&temp_gs, &attacks);
@@ -471,12 +638,13 @@ void GetLegalMoves(const GameState* gs, MoveList* out)
 
     // Collect all pseudo-legal candidate moves for the side to move.
     MoveList candidates = {};
-    GeneratePawnMoves  (gs, &candidates);
-    GenerateKnightMoves(gs, &candidates);
-    GenerateRookMoves  (gs, &candidates);
-    GenerateBishopMoves(gs, &candidates);
-    GenerateQueenMoves (gs, &candidates);
-    GenerateKingMoves  (gs, &candidates);
+    GeneratePawnMoves    (gs, &candidates);
+    GenerateKnightMoves  (gs, &candidates);
+    GenerateRookMoves    (gs, &candidates);
+    GenerateBishopMoves  (gs, &candidates);
+    GenerateQueenMoves   (gs, &candidates);
+    GenerateKingMoves    (gs, &candidates);
+    GenerateCastlingMoves(gs, &candidates);
 
     const Color color = gs->side_to_move;
 

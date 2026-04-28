@@ -88,9 +88,9 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 `src/moves.h` defines the core types used for move generation and application:
 
-- **`Move`** — a single candidate move. Fields: `from_rank`, `from_file`, `to_rank`, `to_file`, `promotion` (`PIECE_NONE` = normal move; `PIECE_QUEEN`/`PIECE_ROOK`/`PIECE_BISHOP`/`PIECE_KNIGHT` = the chosen promotion piece), `is_en_passant`.
+- **`Move`** — a single candidate move. Fields: `from_rank`, `from_file`, `to_rank`, `to_file`, `promotion` (`PIECE_NONE` = normal move; `PIECE_QUEEN`/`PIECE_ROOK`/`PIECE_BISHOP`/`PIECE_KNIGHT` = the chosen promotion piece), `is_en_passant`, `is_castling` (when true, `ApplyMove` also repositions the rook).
 - **`MoveList`** — a fixed-size array of up to `MAX_MOVES_PER_POSITION` (256) `Move` values plus a `count`. Callers zero-initialize and pass a pointer; generator functions append without clearing.
-- **`GameState`** — all mutable state needed between moves: `Board board`, `Color side_to_move`, and `int8 en_passant_rank` / `int8 en_passant_file` (-1 when no en passant is available; otherwise the coordinates of the target square created by the most recent double pawn push).
+- **`GameState`** — all mutable state needed between moves: `Board board`, `Color side_to_move`, `int8 en_passant_rank` / `int8 en_passant_file` (-1 when no en passant is available), and four castling-rights flags: `castling_white_kingside`, `castling_white_queenside`, `castling_black_kingside`, `castling_black_queenside`. All four are `true` after `InitGameState` and are cleared by `ApplyMove` when the relevant king or rook moves or when a rook is captured on its starting square.
 
 #### Pawn Move Generation
 
@@ -123,12 +123,15 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 `ApplyMove(GameState*, const Move*)` mutates the game state:
 
-1. Clears the en passant target.
-2. For en passant captures, removes the captured pawn from `(from_rank, to_file)`.
-3. Moves the piece from source to destination.
-4. If `promotion != PIECE_NONE`, replaces the pawn with the promoted piece.
-5. If the move is a double pawn push, sets the en passant target to the skipped square.
-6. Advances `side_to_move`.
+1. Records the piece being captured (used for castling-rights logic).
+2. Clears the en passant target.
+3. For en passant captures, removes the captured pawn from `(from_rank, to_file)`.
+4. Moves the piece from source to destination.
+5. If `promotion != PIECE_NONE`, replaces the pawn with the promoted piece.
+6. If `is_castling`, slides the rook from its starting corner to its castled square (f-file for kingside, d-file for queenside).
+7. If the move is a double pawn push, sets the en passant target to the skipped square.
+8. Clears castling rights: both rights for the moving side when the king moves; the relevant side's right when a rook departs its starting corner; the relevant side's right when a rook is captured on its starting corner.
+9. Advances `side_to_move`.
 
 #### Check Detection
 
@@ -148,13 +151,23 @@ Own legal move generation, check detection, checkmate detection, and any support
 - **Board filtering** — destinations outside the 8×8 grid are discarded.
 - **Friendly-piece filtering** — destinations occupied by `side_to_move` are discarded. Destinations occupied by an enemy piece are legal (capture).
 
+#### Castling Move Generation
+
+`GenerateCastlingMoves(const GameState*, MoveList*)` appends kingside and/or queenside castling moves for `gs->side_to_move`, subject to all standard castling rules:
+
+- Castling right for that side must be set in `GameState`.
+- King must be on its starting square (e1 / e8) and the relevant rook must be on its corner (h-file for kingside, a-file for queenside).
+- All squares between king and rook must be empty.
+- The king must not start in check, pass through a checked square, or land on a checked square. (These three squares are tested with the internal `IsSquareAttackedBy` helper.)
+- Generated castling moves have `is_castling = true`; the king's destination is g-file (kingside) or c-file (queenside).
+
 #### Legal Move Filtering
 
 `GetLegalMoves(const GameState*, MoveList*)` appends all **fully legal** moves for `gs->side_to_move`:
 
-- Generates all pseudo-legal candidate moves by calling `GeneratePawnMoves`, `GenerateKnightMoves`, `GenerateRookMoves`, `GenerateBishopMoves`, `GenerateQueenMoves`, and `GenerateKingMoves`.
+- Generates all pseudo-legal candidate moves by calling `GeneratePawnMoves`, `GenerateKnightMoves`, `GenerateRookMoves`, `GenerateBishopMoves`, `GenerateQueenMoves`, `GenerateKingMoves`, and `GenerateCastlingMoves`.
 - For each candidate move, applies the move to a stack-local copy of the `GameState`, calls `IsInCheck` on the resulting board for the moving side, and discards the move if the king is in check.
-- Handles all pinned-piece cases and king-into-check cases automatically through the apply-and-test approach.
+- Handles all pinned-piece cases, king-into-check cases, and castling naturally through the apply-and-test approach.
 - No dynamic allocation; all temporaries are stack-local.
 
 ### User Interface
