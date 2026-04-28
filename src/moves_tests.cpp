@@ -1393,6 +1393,75 @@ static bool TestCastling_RightsLostAfterRookCaptured(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Regression: kingside castling is legal when an enemy pawn is directly in
+// front of the transit square (f1) but does not attack it diagonally.
+// A black pawn on f2 (rank 1, file 5) attacks e1 and g1 — NOT f1.
+// So castling through f1 should still be legal.
+// ---------------------------------------------------------------------------
+static bool TestCastling_KingsideLegalWithPawnInFrontOfTransit(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    // Black pawn on f2 (rank 1, file 5) — in front of the f1 transit square but
+    // does NOT attack f1 diagonally; it attacks e1 and g1.
+    gs->board.squares[1][5] = { PIECE_PAWN, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Kingside castling must still appear because f1 is not attacked by the pawn.
+    if (!FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: ApplyMove on a normal king step (is_castling = false) must NOT
+// move the rook, even when a rook sits on h1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_NormalKingMoveDoesNotMovRook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+
+    // Normal king move: e1 -> d1  (is_castling explicitly false)
+    Move km          = {};
+    km.from_rank     = 0; km.from_file = 4; // e1
+    km.to_rank       = 0; km.to_file   = 3; // d1
+    km.promotion     = PIECE_NONE;
+    km.is_en_passant = false;
+    km.is_castling   = false;
+
+    ApplyMove(gs, &km);
+
+    // King should be on d1.
+    if (gs->board.squares[0][3].piece != PIECE_KING) return false;
+    // Rook must still be on h1 — not moved.
+    if (gs->board.squares[0][7].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[0][7].color != COLOR_WHITE) return false;
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -1449,6 +1518,8 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestCastling_RightsLostAfterKingMove);
     RUN_TEST(TestCastling_RightsLostAfterRookMove);
     RUN_TEST(TestCastling_RightsLostAfterRookCaptured);
+    RUN_TEST(TestCastling_KingsideLegalWithPawnInFrontOfTransit);
+    RUN_TEST(TestCastling_NormalKingMoveDoesNotMovRook);
 
     return true;
 }
