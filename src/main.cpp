@@ -129,6 +129,7 @@ void RunMemoryTests(AppMemory* memory, int32* passed, int32* total);
 void RunBoardTests(AppMemory* memory, int32* passed, int32* total);
 void RunMovesTests(AppMemory* memory, int32* passed, int32* total);
 void RunRendererTests(AppMemory* memory, int32* passed, int32* total);
+void RunUITests(AppMemory* memory, int32* passed, int32* total);
 
 static bool RunTests(void)
 {
@@ -139,6 +140,7 @@ static bool RunTests(void)
     RunBoardTests(&g_Memory,    &passed, &total);
     RunMovesTests(&g_Memory,    &passed, &total);
     RunRendererTests(&g_Memory, &passed, &total);
+    RunUITests(&g_Memory,       &passed, &total);
 
     uint8 summary[64];
     wsprintfA((LPSTR)summary, "%d/%d tests passed\n", passed, total);

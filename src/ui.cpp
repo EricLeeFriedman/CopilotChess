@@ -252,8 +252,9 @@ void DrawBoard(RendererState*   rs,
             // so rank 7 (Black's back rank) appears at the top.
             int32 sq_y = board_y + (7 - rank) * square_size;
 
-            // Base square colour: light on (rank+file) even, dark on odd
-            bool  is_light = ((rank + file) & 1) == 0;
+            // Base square colour: light on (rank+file) odd, dark on even
+            // (a1 = rank 0, file 0, sum 0 → dark; h1 = rank 0, file 7, sum 7 → light)
+            bool  is_light = ((rank + file) & 1) != 0;
             Pixel sq_color = is_light ? BOARD_LIGHT : BOARD_DARK;
 
             // Overlay: selected square or valid-move target

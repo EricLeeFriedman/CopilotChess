@@ -51,6 +51,7 @@ The public API:
 | `RendererInit(rs, arena, w, h)` | Push the pixel buffer from the arena, fill `bmi` |
 | `ClearBuffer(rs, color)` | Fill every pixel with a solid `Pixel` colour |
 | `DrawRect(rs, x, y, w, h, color)` | Fill an axis-aligned rectangle; silently clips to buffer bounds |
+| `DrawFilledCircle(rs, cx, cy, radius, color)` | Fill a circle using integer-only midpoint arithmetic; silently clips to buffer bounds |
 | `PresentFrame(rs, window)` | Call `StretchDIBits` to blit the pixel buffer to the window client area |
 
 `PresentFrame` acquires the DC with `GetDC`/`ReleaseDC` each frame — no per-frame GDI objects are allocated. The pixel format is BGRA with 32 bits per pixel and a top-down row order (negative `biHeight`).
