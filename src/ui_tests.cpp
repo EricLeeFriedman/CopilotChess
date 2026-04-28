@@ -44,34 +44,29 @@ static bool TestUI_DrawBoard_NoCrash(void)
     return true;
 }
 
-// The center of the selected square must differ from the background color.
+// The center of the selected square must differ from the unlit square color.
+// Use an empty square (e4, rank 3 / file 4) so no piece overwrites the result.
 static bool TestUI_DrawBoard_SelectedSquareIsHighlighted(void)
 {
     ArenaReset(&s_Memory->test_scratch);
     RendererState rs = MakeRenderer(640, 640);
 
-    // Clear to an easily distinguishable background first.
-    Pixel bg = {};
-    bg.r = 10; bg.g = 10; bg.b = 10;
-    ClearBuffer(&rs, bg);
-
     GameState gs = {};
     InitGameState(&gs);
 
-    // Select rank 0 / file 4 (White's king square, e1).
-    // square_size=80, board rendered at (0,0).
-    // Rank 0 is at the bottom: pixel y = (7 - 0) * 80 = 560.
-    // File 4: pixel x = 4 * 80 = 320.
-    // Centre pixel: (320+40, 560+40) = (360, 600).
-    DrawBoard(&rs, &gs, 0, 0, 80, 0, 4, nullptr);
+    // Select rank 3 / file 4 (e4 — always empty at game start).
+    // square_size=80, board at (0,0).
+    // sq_y = (7 - 3) * 80 = 320; sq_x = 4 * 80 = 320.
+    // Centre pixel: (320+40, 320+40) = (360, 360).
+    // rank 3 + file 4 = 7 (odd) → light square; BOARD_LIGHT = {181,217,240,0} BGRA.
+    DrawBoard(&rs, &gs, 0, 0, 80, 3, 4, nullptr);
 
-    Pixel center_px = rs.pixels[(int32)600 * rs.width + (int32)360];
+    Pixel center_px = rs.pixels[(int32)360 * rs.width + (int32)360];
 
-    // The normal square color for e1 (rank 0 + file 4 = 4, even → dark square)
-    // after selecting it must have changed away from the unlit dark color.
-    Pixel dark_sq = { 99, 136, 181, 0 };
-    // It must not be the unlit dark color — it must be the selection tint.
-    if (PixelEq(center_px, dark_sq)) return false;
+    // If selection highlighting is applied the center pixel will be BOARD_SELECTED
+    // ({105,151,130,0}), not the unlit light color.
+    Pixel light_sq = { 181, 217, 240, 0 };
+    if (PixelEq(center_px, light_sq)) return false;
 
     return true;
 }
@@ -108,11 +103,9 @@ static bool TestUI_DrawBoard_LegalMoveDotOnTargetOnly(void)
 
     // A non-target square (rank 4, file 0 — a4) must keep its plain board color.
     // y = (7 - 4) * 80 + 40 = 280; x = 0 * 80 + 40 = 40.
+    // rank 4 + file 0 = 4 (even) → dark square.
     Pixel non_target_px = rs.pixels[(int32)280 * rs.width + (int32)40];
-    Pixel expected_sq   = { 181, 217, 240, 0 }; // rank 4 + file 0 = 4, even → dark
-    // rank 4 file 0 sum = 4 (even) → dark square
-    expected_sq = dark_sq;
-    if (!PixelEq(non_target_px, expected_sq)) return false;
+    if (!PixelEq(non_target_px, dark_sq)) return false;
 
     return true;
 }
