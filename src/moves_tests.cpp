@@ -1639,6 +1639,100 @@ static bool TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// EvaluatePosition: initial position is ongoing.
+// ---------------------------------------------------------------------------
+static bool TestEvaluatePosition_Ongoing(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    if (EvaluatePosition(gs) != GAME_ONGOING) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// EvaluatePosition: Fool's mate — black wins by checkmate in 4 half-moves.
+//   1. f3  e5
+//   2. g4  Qh4#
+// After these moves White is in check with no legal escape: GAME_BLACK_WINS.
+// ---------------------------------------------------------------------------
+static bool TestEvaluatePosition_Checkmate_FoolsMate(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    // 1. f3 (f2 -> f3): rank 1, file 5 -> rank 2, file 5
+    Move m1 = {};
+    m1.from_rank = 1; m1.from_file = 5;
+    m1.to_rank   = 2; m1.to_file   = 5;
+    ApplyMove(gs, &m1);
+
+    // 1...e5 (e7 -> e5): rank 6, file 4 -> rank 4, file 4
+    Move m2 = {};
+    m2.from_rank = 6; m2.from_file = 4;
+    m2.to_rank   = 4; m2.to_file   = 4;
+    ApplyMove(gs, &m2);
+
+    // 2. g4 (g2 -> g4): rank 1, file 6 -> rank 3, file 6
+    Move m3 = {};
+    m3.from_rank = 1; m3.from_file = 6;
+    m3.to_rank   = 3; m3.to_file   = 6;
+    ApplyMove(gs, &m3);
+
+    // 2...Qh4# (Qd8 -> h4): rank 7, file 3 -> rank 3, file 7
+    Move m4 = {};
+    m4.from_rank = 7; m4.from_file = 3;
+    m4.to_rank   = 3; m4.to_file   = 7;
+    ApplyMove(gs, &m4);
+
+    // White is now in checkmate: Black wins.
+    if (EvaluatePosition(gs) != GAME_BLACK_WINS) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// EvaluatePosition: classic stalemate — Black has no legal moves and is not
+// in check.
+//   White: King c6 (rank 5, file 2), Queen b6 (rank 5, file 1)
+//   Black: King a8 (rank 7, file 0)
+//   Side to move: BLACK
+// Black king cannot move to a7 (attacked by queen), b8 (attacked by queen),
+// or b7 (attacked by queen and king).  Not in check.  Result: GAME_DRAW.
+// ---------------------------------------------------------------------------
+static bool TestEvaluatePosition_Stalemate(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    // Clear all squares.
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][0] = { PIECE_KING,  COLOR_BLACK }; // Black king a8
+    gs->board.squares[5][2] = { PIECE_KING,  COLOR_WHITE }; // White king c6
+    gs->board.squares[5][1] = { PIECE_QUEEN, COLOR_WHITE }; // White queen b6
+
+    gs->side_to_move             = COLOR_BLACK;
+    gs->castling_white_kingside  = false;
+    gs->castling_white_queenside = false;
+    gs->castling_black_kingside  = false;
+    gs->castling_black_queenside = false;
+
+    if (EvaluatePosition(gs) != GAME_DRAW) return false;
+    return true;
+}
+
 static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestPawn_WhiteDoublePush),
     TEST_ENTRY(TestPawn_BlackDoublePush),
@@ -1697,6 +1791,10 @@ static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestIsInCheck_PawnDirectlyInFrontIsNotCheck),
     TEST_ENTRY(TestCastling_NormalKingMoveDoesNotMovRook),
     TEST_ENTRY(TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare),
+
+    TEST_ENTRY(TestEvaluatePosition_Ongoing),
+    TEST_ENTRY(TestEvaluatePosition_Checkmate_FoolsMate),
+    TEST_ENTRY(TestEvaluatePosition_Stalemate),
 };
 
 void RunMovesTests(AppMemory* memory, int32* passed, int32* total)

@@ -660,3 +660,23 @@ void GetLegalMoves(const GameState* gs, MoveList* out)
         }
     }
 }
+
+GameResult EvaluatePosition(const GameState* gs)
+{
+    ASSERT(gs);
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    if (legal.count > 0)
+        return GAME_ONGOING;
+
+    // No legal moves: checkmate or stalemate.
+    if (IsInCheck(&gs->board, gs->side_to_move))
+    {
+        // The side to move is in check with no escape: they lose.
+        return (gs->side_to_move == COLOR_WHITE) ? GAME_BLACK_WINS : GAME_WHITE_WINS;
+    }
+
+    return GAME_DRAW;
+}
