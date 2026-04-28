@@ -360,17 +360,14 @@ void GenerateKingMoves(const GameState* gs, MoveList* list)
 }
 
 
-// Returns true if the given square is attacked by any piece of 'attacker' on 'board'.
-// Pawn attacks are detected directly (diagonal captures only) to avoid counting
-// forward pushes as attacks.
-static bool IsSquareAttackedBy(const Board* board, int8 rank, int8 file, Color attacker)
+// Returns true if any piece of 'attacker' can pseudo-legally reach (rank, file) on board.
+// Pawn attacks use direct diagonal detection only (no forward pushes).
+// This function does NOT filter absolutely pinned pieces; use IsSquareAttackedBy for that.
+static bool IsSquareAttackedByPseudo(const Board* board, int8 rank, int8 file, Color attacker)
 {
     // --- Pawn attack check (diagonal only) ---
-    // A white pawn on (r, f) attacks (r+1, f±1).  To be attacked from a white pawn,
-    // look for a white pawn one rank below, one file to each side.
-    // A black pawn on (r, f) attacks (r-1, f±1).
     {
-        const int8 pawn_dir = (attacker == COLOR_WHITE) ? -1 : 1; // direction from target back to attacker
+        const int8 pawn_dir = (attacker == COLOR_WHITE) ? -1 : 1;
         const int8 pr = (int8)(rank + pawn_dir);
         if (pr >= 0 && pr < 8)
         {
@@ -412,6 +409,101 @@ static bool IsSquareAttackedBy(const Board* board, int8 rank, int8 file, Color a
         {
             return true;
         }
+    }
+    return false;
+}
+
+// Returns true if (rank, file) is genuinely attacked by 'attacker', filtering out
+// absolutely pinned pieces.  A piece is absolutely pinned if making the capture
+// would leave its own king in (pseudo-legal) check.
+static bool IsSquareAttackedBy(const Board* board, int8 rank, int8 file, Color attacker)
+{
+    // --- Pawn attack check (diagonal only, same as pseudo version) ---
+    // Pawn diagonal attacks are checked for pin below via the general path;
+    // for simplicity we keep the fast direct check here because pawn diagonal
+    // captures are rarely the source of a false-positive pin in practice.
+    {
+        const int8 pawn_dir = (attacker == COLOR_WHITE) ? -1 : 1;
+        const int8 pr = (int8)(rank + pawn_dir);
+        if (pr >= 0 && pr < 8)
+        {
+            for (int32 df = -1; df <= 1; df += 2)
+            {
+                const int8 pf = (int8)(file + df);
+                if (pf >= 0 && pf < 8)
+                {
+                    const Square sq = board->squares[pr][pf];
+                    if (sq.piece == PIECE_PAWN && sq.color == attacker)
+                    {
+                        // Verify the pawn is not pinned: simulate the capture and
+                        // check whether the attacker's king would be exposed.
+                        Board copy = *board;
+                        copy.squares[rank][file] = copy.squares[pr][pf];
+                        copy.squares[pr][pf]     = { PIECE_NONE, COLOR_NONE };
+
+                        // Find attacker's king in the copy (pawn didn't move the king).
+                        int8 kr = -1, kf = -1;
+                        for (int32 r2 = 0; r2 < 8 && kr == -1; ++r2)
+                            for (int32 f2 = 0; f2 < 8; ++f2)
+                                if (copy.squares[r2][f2].piece == PIECE_KING &&
+                                    copy.squares[r2][f2].color == attacker)
+                                { kr = (int8)r2; kf = (int8)f2; break; }
+
+                        const Color defender = (attacker == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
+                        if (kr == -1 || !IsSquareAttackedByPseudo(&copy, kr, kf, defender))
+                            return true;
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Non-pawn pieces via pseudo-legal generation with pin filtering ---
+    const Color defender = (attacker == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
+
+    // Pre-locate the attacker's king (needed for pin detection).
+    int8 atk_king_rank = -1, atk_king_file = -1;
+    for (int32 r = 0; r < 8 && atk_king_rank == -1; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            if (board->squares[r][f].piece == PIECE_KING &&
+                board->squares[r][f].color == attacker)
+            { atk_king_rank = (int8)r; atk_king_file = (int8)f; break; }
+
+    GameState temp_gs;
+    temp_gs.board                    = *board;
+    temp_gs.side_to_move             = attacker;
+    temp_gs.en_passant_rank          = -1;
+    temp_gs.en_passant_file          = -1;
+    temp_gs.castling_white_kingside  = false;
+    temp_gs.castling_white_queenside = false;
+    temp_gs.castling_black_kingside  = false;
+    temp_gs.castling_black_queenside = false;
+
+    MoveList attacks = {};
+    GenerateKnightMoves(&temp_gs, &attacks);
+    GenerateRookMoves  (&temp_gs, &attacks);
+    GenerateBishopMoves(&temp_gs, &attacks);
+    GenerateQueenMoves (&temp_gs, &attacks);
+    GenerateKingMoves  (&temp_gs, &attacks);
+
+    for (int32 i = 0; i < attacks.count; ++i)
+    {
+        const Move& m = attacks.moves[i];
+        if (m.to_rank != rank || m.to_file != file) continue;
+
+        // Simulate the capture: move the attacker piece to (rank, file).
+        Board copy = *board;
+        copy.squares[rank][file]        = copy.squares[m.from_rank][m.from_file];
+        copy.squares[m.from_rank][m.from_file] = { PIECE_NONE, COLOR_NONE };
+
+        // If this piece is the attacker's king, the king moved to (rank, file).
+        const bool king_moved = (m.from_rank == atk_king_rank && m.from_file == atk_king_file);
+        const int8 check_rank = king_moved ? rank         : atk_king_rank;
+        const int8 check_file = king_moved ? (int8)file   : atk_king_file;
+
+        // If no king exists on the board, treat the capture as genuine (no pin possible).
+        if (atk_king_rank == -1 || !IsSquareAttackedByPseudo(&copy, check_rank, check_file, defender))
+            return true;
     }
     return false;
 }
@@ -610,58 +702,8 @@ bool IsInCheck(const Board* board, Color color)
     // No king found — cannot be in check.
     if (king_rank == -1) return false;
 
-    // Build a temporary game state from the enemy's perspective to reuse
-    // the existing move generators.
     const Color enemy = (color == COLOR_WHITE) ? COLOR_BLACK : COLOR_WHITE;
-    GameState temp_gs;
-    temp_gs.board                    = *board;
-    temp_gs.side_to_move             = enemy;
-    temp_gs.en_passant_rank          = -1;
-    temp_gs.en_passant_file          = -1;
-    temp_gs.castling_white_kingside  = false;
-    temp_gs.castling_white_queenside = false;
-    temp_gs.castling_black_kingside  = false;
-    temp_gs.castling_black_queenside = false;
-
-    MoveList attacks = {};
-    GeneratePawnMoves  (&temp_gs, &attacks);
-    GenerateKnightMoves(&temp_gs, &attacks);
-    GenerateRookMoves  (&temp_gs, &attacks);
-    GenerateBishopMoves(&temp_gs, &attacks);
-    GenerateQueenMoves (&temp_gs, &attacks);
-
-    // Check whether any enemy move targets the king's square.
-    for (int32 i = 0; i < attacks.count; ++i)
-    {
-        if (attacks.moves[i].to_rank == king_rank &&
-            attacks.moves[i].to_file == king_file)
-        {
-            return true;
-        }
-    }
-
-    // Check whether an adjacent enemy king attacks this king's square.
-    // (Not covered by the generators above, which only generate moves for the
-    // side_to_move king, not attacks on the opposing king.)
-    static const int8 k_king_offsets[8][2] =
-    {
-        { 1,  0 }, { -1,  0 },
-        { 0,  1 }, {  0, -1 },
-        { 1,  1 }, {  1, -1 },
-        {-1,  1 }, { -1, -1 },
-    };
-    for (int32 i = 0; i < 8; ++i)
-    {
-        const int8 r = (int8)(king_rank + k_king_offsets[i][0]);
-        const int8 f = (int8)(king_file + k_king_offsets[i][1]);
-        if (r < 0 || r >= 8 || f < 0 || f >= 8) continue;
-        const Square sq = board->squares[r][f];
-        if (sq.piece == PIECE_KING && sq.color == enemy)
-        {
-            return true;
-        }
-    }
-    return false;
+    return IsSquareAttackedBy(board, king_rank, king_file, enemy);
 }
 
 void GetLegalMoves(const GameState* gs, MoveList* out)

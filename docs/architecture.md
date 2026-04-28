@@ -135,12 +135,19 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 #### Check Detection
 
-`IsInCheck(const Board*, Color)` returns `true` if the king of the given color is attacked by any enemy piece on the current board.
+`IsInCheck(const Board*, Color)` returns `true` if the king of the given color is genuinely attacked by any enemy piece (accounting for pins) on the current board.
 
 - Scans the board to locate the king for `color`.
-- Builds a temporary `GameState` with the enemy as `side_to_move`.
-- Calls all five pseudo-legal move generators (`GeneratePawnMoves`, `GenerateKnightMoves`, `GenerateRookMoves`, `GenerateBishopMoves`, `GenerateQueenMoves`) to enumerate every square the enemy can attack.
-- Returns `true` if any generated move lands on the king's square.
+- Delegates to `IsSquareAttackedBy` for the king's square and the enemy color.
+
+`IsSquareAttackedBy(const Board*, int8 rank, int8 file, Color attacker)` is the pin-aware attack helper. Pawn attacks are detected with a direct diagonal scan. For all other piece types it:
+
+- Generates pseudo-legal moves for the `attacker` side (knight, rook, bishop, queen, king generators).
+- For each pseudo-legal move that reaches `(rank, file)`, simulates the capture on a stack-local board copy.
+- Calls `IsSquareAttackedByPseudo` to check whether the attacker's own king would be exposed in the resulting position.
+- Returns `true` only for captures that do **not** expose the attacker's king (i.e., the attacker piece is not absolutely pinned).
+
+`IsSquareAttackedByPseudo(const Board*, int8 rank, int8 file, Color attacker)` is a fast pseudo-legal helper used **only** inside `IsSquareAttackedBy` for the inner pin-verification step. It does not filter pinned pieces and must not be called for other purposes.
 - Efficient enough to call repeatedly during legal move filtering (no dynamic allocation; uses stack-local `GameState` and `MoveList`).
 
 #### King Move Generation

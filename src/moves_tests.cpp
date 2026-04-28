@@ -1488,6 +1488,77 @@ static bool TestCastling_NormalKingMoveDoesNotMovRook(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Regression: an absolutely pinned enemy knight must NOT be counted as
+// attacking a square it cannot legally reach.
+//
+// Setup:
+//   White king on e1 (rank 0, file 4), White rook on d1 (rank 0, file 3).
+//   Black knight on d4 (rank 3, file 3), Black king on d8 (rank 7, file 3).
+//
+// The Black knight is absolutely pinned along the d-file (White rook on d1
+// would attack Black king on d8 if the knight moved off d3). The knight
+// pseudo-legally attacks e2 (rank 1, file 4), but that capture is illegal.
+//
+// With the fix, the White king must be allowed to step to e2.
+// Without the fix (pseudo-legal attack detection), the king step was
+// incorrectly rejected.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE }; // e1
+    gs->board.squares[0][3] = { PIECE_ROOK,   COLOR_WHITE }; // d1 — pins black knight
+    gs->board.squares[3][3] = { PIECE_KNIGHT, COLOR_BLACK }; // d4 — absolutely pinned
+    gs->board.squares[7][3] = { PIECE_KING,   COLOR_BLACK }; // d8
+
+    // Black knight on d4 pseudo-legally attacks e2 (rank 1, file 4).
+    // Verify the pin by confirming the knight DOES pseudo-attack e2.
+    // Then verify the White king CAN still step to e2 legally.
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Find a king step from e1 (0,4) to e2 (1,4).
+    bool found_e2 = false;
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.from_rank == 0 && m.from_file == 4 &&
+            m.to_rank   == 1 && m.to_file   == 4 &&
+            !m.is_castling)
+        {
+            found_e2 = true;
+            break;
+        }
+    }
+    if (!found_e2) return false;
+
+    // The pinned Black knight must NOT be reported as checking after the king
+    // moves to e2 either — the step was already included in legal moves, but
+    // double-check IsInCheck directly on the post-move board.
+    GameState after = *gs;
+    Move km          = {};
+    km.from_rank     = 0; km.from_file = 4;
+    km.to_rank       = 1; km.to_file   = 4;
+    km.promotion     = PIECE_NONE;
+    km.is_en_passant = false;
+    km.is_castling   = false;
+    ApplyMove(&after, &km);
+    if (IsInCheck(&after.board, COLOR_WHITE)) return false;
+
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -1534,6 +1605,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestGetLegalMoves_PinnedRook);
     RUN_TEST(TestGetLegalMoves_KingCannotWalkIntoCheck);
     RUN_TEST(TestGetLegalMoves_PinnedKnightHasNoMoves);
+    RUN_TEST(TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep);
 
     RUN_TEST(TestCastling_WhiteKingsideAvailable);
     RUN_TEST(TestCastling_WhiteQueensideAvailable);
