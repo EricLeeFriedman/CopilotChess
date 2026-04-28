@@ -40,6 +40,22 @@ static bool FindEnPassantMove(const MoveList* list, int8 fr, int8 ff, int8 tr, i
     return false;
 }
 
+// Same as FindMove but also requires is_castling flag.
+static bool FindCastlingMove(const MoveList* list, int8 fr, int8 ff, int8 tr, int8 tf)
+{
+    for (int32 i = 0; i < list->count; ++i)
+    {
+        const Move& m = list->moves[i];
+        if (m.from_rank == fr && m.from_file == ff &&
+            m.to_rank   == tr && m.to_file   == tf &&
+            m.is_castling)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Same as FindMove but also requires a promotion piece.
 static bool FindPromotion(const MoveList* list, int8 fr, int8 ff, int8 tr, int8 tf, PieceType promo)
 {
@@ -962,6 +978,667 @@ static bool TestIsInCheck_ByKing(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// GetLegalMoves: pinned rook cannot move off the pin ray.
+// White king on e1 (rank 0, file 4), white rook on e4 (rank 3, file 4),
+// black rook on e8 (rank 7, file 4).  The white rook is pinned along the
+// e-file; any move to a different file would expose the king.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_PinnedRook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,  COLOR_WHITE };
+    gs->board.squares[3][4] = { PIECE_ROOK,  COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK,  COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // White rook may only move along the e-file (ranks 1-2 toward king side
+    // are blocked by king, but rank-wise moves up to the enemy rook are fine).
+    // It must NOT appear at any non-e-file square in the legal list.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.from_rank == 3 && m.from_file == 4)
+        {
+            // Rook move — must stay on file 4.
+            if (m.to_file != 4) return false;
+        }
+    }
+
+    // The rook should be able to capture on e8 (rank 7, file 4).
+    if (!FindMove(&legal, 3, 4, 7, 4)) return false;
+    // The rook should NOT be able to move to, say, d4 (rank 3, file 3).
+    if (FindMove(&legal, 3, 4, 3, 3)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// GetLegalMoves: king cannot walk into check.
+// White king on e1 (rank 0, file 4), black rook on f8 (rank 7, file 5).
+// The f-file is controlled by the rook, so the king must not step to f1 or f2.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_KingCannotWalkIntoCheck(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[7][5] = { PIECE_ROOK, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // King must not move onto file 5 (f-file) — controlled by the black rook.
+    if (FindMove(&legal, 0, 4, 0, 5)) return false; // f1
+    if (FindMove(&legal, 0, 4, 1, 5)) return false; // f2
+    // King may still move to d1, d2, e2.
+    if (!FindMove(&legal, 0, 4, 0, 3)) return false; // d1
+    if (!FindMove(&legal, 0, 4, 1, 3)) return false; // d2
+    if (!FindMove(&legal, 0, 4, 1, 4)) return false; // e2
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// GetLegalMoves: pinned knight has no legal moves.
+// White king on e1 (rank 0, file 4), white knight on e3 (rank 2, file 4),
+// black rook on e8 (rank 7, file 4).  The knight is on the e-file between
+// king and rook; moving it in any L-shape exposes the king.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_PinnedKnightHasNoMoves(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE };
+    gs->board.squares[2][4] = { PIECE_KNIGHT, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK,   COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // No knight move should appear in the legal list.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        if (legal.moves[i].from_rank == 2 && legal.moves[i].from_file == 4)
+            return false;
+    }
+    return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Castling: white kingside castling available when path is clear.
+// ---------------------------------------------------------------------------
+static bool TestCastling_WhiteKingsideAvailable(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Kingside castling: king from e1 (0,4) to g1 (0,6).
+    if (!FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling: white queenside castling available when path is clear.
+// ---------------------------------------------------------------------------
+static bool TestCastling_WhiteQueensideAvailable(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Queenside castling: king from e1 (0,4) to c1 (0,2).
+    if (!FindCastlingMove(&legal, 0, 4, 0, 2)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling: kingside castling blocked by a piece on f1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_KingsideBlockedByPiece(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK,   COLOR_WHITE };
+    gs->board.squares[0][5] = { PIECE_BISHOP, COLOR_WHITE }; // f1 blocks path
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Kingside castling must not appear.
+    if (FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling: kingside castling forbidden when the transit square (f1) is attacked.
+// ---------------------------------------------------------------------------
+static bool TestCastling_KingsideThroughCheck(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    // Black rook on f8 (rank 7, file 5) controls the entire f-file.
+    gs->board.squares[7][5] = { PIECE_ROOK, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Kingside castling must not appear because f1 is attacked.
+    if (FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling: ApplyMove — after kingside castle, king on g1, rook on f1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ApplyKingside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+
+    Move cm          = {};
+    cm.from_rank     = 0; cm.from_file = 4; // e1
+    cm.to_rank       = 0; cm.to_file   = 6; // g1
+    cm.promotion     = PIECE_NONE;
+    cm.is_en_passant = false;
+    cm.is_castling   = true;
+
+    ApplyMove(gs, &cm);
+
+    // King should be on g1.
+    if (gs->board.squares[0][6].piece != PIECE_KING) return false;
+    if (gs->board.squares[0][6].color != COLOR_WHITE) return false;
+    // Rook should be on f1.
+    if (gs->board.squares[0][5].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[0][5].color != COLOR_WHITE) return false;
+    // Old king square (e1) must be empty.
+    if (gs->board.squares[0][4].piece != PIECE_NONE) return false;
+    // Old rook square (h1) must be empty.
+    if (gs->board.squares[0][7].piece != PIECE_NONE) return false;
+    // Both white castling rights must now be cleared.
+    if (gs->castling_white_kingside)  return false;
+    if (gs->castling_white_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling: ApplyMove — after queenside castle, king on c1, rook on d1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ApplyQueenside(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE };
+
+    Move cm          = {};
+    cm.from_rank     = 0; cm.from_file = 4; // e1
+    cm.to_rank       = 0; cm.to_file   = 2; // c1
+    cm.promotion     = PIECE_NONE;
+    cm.is_en_passant = false;
+    cm.is_castling   = true;
+
+    ApplyMove(gs, &cm);
+
+    // King should be on c1.
+    if (gs->board.squares[0][2].piece != PIECE_KING) return false;
+    if (gs->board.squares[0][2].color != COLOR_WHITE) return false;
+    // Rook should be on d1.
+    if (gs->board.squares[0][3].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[0][3].color != COLOR_WHITE) return false;
+    // Old king square (e1) must be empty.
+    if (gs->board.squares[0][4].piece != PIECE_NONE) return false;
+    // Old rook square (a1) must be empty.
+    if (gs->board.squares[0][0].piece != PIECE_NONE) return false;
+    // Both white castling rights must now be cleared.
+    if (gs->castling_white_kingside)  return false;
+    if (gs->castling_white_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling rights: both white rights cleared when white king moves.
+// ---------------------------------------------------------------------------
+static bool TestCastling_RightsLostAfterKingMove(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+
+    Move km          = {};
+    km.from_rank     = 0; km.from_file = 4; // e1
+    km.to_rank       = 1; km.to_file   = 4; // e2
+    km.promotion     = PIECE_NONE;
+    km.is_en_passant = false;
+    km.is_castling   = false;
+
+    ApplyMove(gs, &km);
+
+    if (gs->castling_white_kingside)  return false;
+    if (gs->castling_white_queenside) return false;
+    // Black rights must be unaffected.
+    if (!gs->castling_black_kingside)  return false;
+    if (!gs->castling_black_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling rights: only the kingside right cleared when the h1-rook moves.
+// ---------------------------------------------------------------------------
+static bool TestCastling_RightsLostAfterRookMove(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE }; // h1
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE }; // a1
+
+    // Move the h1-rook away.
+    Move rm          = {};
+    rm.from_rank     = 0; rm.from_file = 7; // h1
+    rm.to_rank       = 3; rm.to_file   = 7; // h4
+    rm.promotion     = PIECE_NONE;
+    rm.is_en_passant = false;
+    rm.is_castling   = false;
+
+    ApplyMove(gs, &rm);
+
+    // Kingside right must be gone; queenside right must remain.
+    if (gs->castling_white_kingside)   return false;
+    if (!gs->castling_white_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling rights: white kingside right cleared when h1-rook is captured.
+// ---------------------------------------------------------------------------
+static bool TestCastling_RightsLostAfterRookCaptured(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE }; // h1 (target of capture)
+    gs->board.squares[7][7] = { PIECE_ROOK, COLOR_BLACK }; // h8, will capture h1 rook
+
+    gs->side_to_move = COLOR_BLACK;
+
+    // Black rook captures the white h1-rook.
+    Move cap         = {};
+    cap.from_rank    = 7; cap.from_file = 7; // h8
+    cap.to_rank      = 0; cap.to_file   = 7; // h1 (captures white rook)
+    cap.promotion    = PIECE_NONE;
+    cap.is_en_passant = false;
+    cap.is_castling  = false;
+
+    ApplyMove(gs, &cap);
+
+    // White kingside right must be gone after its rook was captured.
+    if (gs->castling_white_kingside) return false;
+    // White queenside right should be unaffected.
+    if (!gs->castling_white_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: kingside castling is illegal when a black pawn on f2 attacks
+// both the king's starting square (e1) and its destination (g1) diagonally.
+// This verifies pawn attacks are detected correctly (diagonal only).
+// ---------------------------------------------------------------------------
+static bool TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    // Black pawn on f2 (rank 1, file 5): diagonally attacks e1 (king start) and g1
+    // (king destination). Kingside castling must be rejected.
+    gs->board.squares[1][5] = { PIECE_PAWN, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Kingside castling must NOT appear — pawn attacks both e1 and g1.
+    if (FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: a pawn directly in front of the king (on the same file) does
+// NOT put the king in check. Only diagonal pawn attacks count.
+// A black pawn on e5 pushes toward e4 but only attacks d4 and f4 diagonally.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_PawnDirectlyInFrontIsNotCheck(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e4 (rank 3, file 4); black pawn directly in front on e5
+    // (rank 4, file 4). The pawn's forward push targets e4, but it ATTACKS
+    // d4 and f4 only — NOT e4. So the king must NOT be in check.
+    gs->board.squares[3][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[4][4] = { PIECE_PAWN, COLOR_BLACK };
+
+    if (IsInCheck(&gs->board, COLOR_WHITE)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: ApplyMove on a normal king step (is_castling = false) must NOT
+// move the rook, even when a rook sits on h1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_NormalKingMoveDoesNotMovRook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+
+    // Normal king move: e1 -> d1  (is_castling explicitly false)
+    Move km          = {};
+    km.from_rank     = 0; km.from_file = 4; // e1
+    km.to_rank       = 0; km.to_file   = 3; // d1
+    km.promotion     = PIECE_NONE;
+    km.is_en_passant = false;
+    km.is_castling   = false;
+
+    ApplyMove(gs, &km);
+
+    // King should be on d1.
+    if (gs->board.squares[0][3].piece != PIECE_KING) return false;
+    // Rook must still be on h1 — not moved.
+    if (gs->board.squares[0][7].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[0][7].color != COLOR_WHITE) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: an absolutely pinned enemy knight still attacks squares it
+// cannot legally move to.  Per FIDE Article 3.8, a piece attacks its normal
+// squares even when constrained from moving there by an absolute pin.
+//
+// Setup:
+//   White king on e1 (rank 0, file 4), White rook on d1 (rank 0, file 3).
+//   Black knight on d4 (rank 3, file 3), Black king on d8 (rank 7, file 3).
+//
+// The Black knight is absolutely pinned along the d-file (White rook on d1
+// would attack Black king on d8 if the knight left d4).  The knight attacks
+// e2 (rank 1, file 4); under FIDE rules that square is controlled, so the
+// White king must NOT be allowed to step there.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE }; // e1
+    gs->board.squares[0][3] = { PIECE_ROOK,   COLOR_WHITE }; // d1 — pins black knight
+    gs->board.squares[3][3] = { PIECE_KNIGHT, COLOR_BLACK }; // d4 — absolutely pinned
+    gs->board.squares[7][3] = { PIECE_KING,   COLOR_BLACK }; // d8
+
+    // The pinned black knight on d4 attacks e2 (rank 1, file 4) per FIDE rules.
+    // GetLegalMoves must NOT include the king step e1 -> e2.
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.from_rank == 0 && m.from_file == 4 &&
+            m.to_rank   == 1 && m.to_file   == 4 &&
+            !m.is_castling)
+        {
+            return false; // king step to e2 must be absent
+        }
+    }
+
+    // Also verify IsInCheck correctly reports check after a king move to e2.
+    GameState after = *gs;
+    Move km          = {};
+    km.from_rank     = 0; km.from_file = 4;
+    km.to_rank       = 1; km.to_file   = 4;
+    km.promotion     = PIECE_NONE;
+    km.is_en_passant = false;
+    km.is_castling   = false;
+    ApplyMove(&after, &km);
+    if (!IsInCheck(&after.board, COLOR_WHITE)) return false; // must be in check
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: GetLegalMoves must never return a move that captures the
+// opponent's king.  King capture is not a legal chess move; such positions
+// must be handled through check/checkmate detection before they arise.
+//
+// Setup:
+//   White queen on d1, Black king on d8, White king on e1.
+//   White is to move.  The queen can pseudo-legally slide to d8 and "capture"
+//   the Black king, but GetLegalMoves must not include that move.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_CannotCaptureKing(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][3] = { PIECE_QUEEN, COLOR_WHITE }; // d1
+    gs->board.squares[0][4] = { PIECE_KING,  COLOR_WHITE }; // e1
+    gs->board.squares[7][3] = { PIECE_KING,  COLOR_BLACK }; // d8 — would be "captured"
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // d1 -> d8 must not be present.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.from_rank == 0 && m.from_file == 3 &&
+            m.to_rank   == 7 && m.to_file   == 3)
+        {
+            return false; // king capture must be absent
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: queenside castling must be illegal when an enemy rook on the
+// h-file would attack the transit/destination squares once the king vacates
+// its starting square.
+//
+// Setup:
+//   White king on e1 (rank 0, file 4), White rook on a1 (rank 0, file 0).
+//   Black rook on h1 (rank 0, file 7), Black king on e8 (rank 7, file 4).
+//
+// With the White king on e1, the Black rook on h1 attacks g1, f1, and is
+// blocked by the king on e1.  Once the king moves away (as it does during
+// queenside castling), the rook would attack d1 and c1 — the transit and
+// destination squares.  GenerateCastlingMoves must detect this by checking
+// those squares on a board with the king removed from e1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // e1
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE }; // a1 (queenside castling rook)
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_BLACK }; // h1 — attacks d1/c1 once king leaves e1
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // e8
+
+    gs->castling_white_queenside = true;
+    gs->castling_white_kingside  = false;
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Queenside castling (e1 -> c1) must NOT appear in legal moves.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.is_castling && m.from_file == 4 && m.to_file == 2)
+            return false; // illegal castle must be absent
+    }
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -1004,6 +1681,26 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestIsInCheck_ByQueen);
     RUN_TEST(TestIsInCheck_BlockedByPiece);
     RUN_TEST(TestIsInCheck_ByKing);
+
+    RUN_TEST(TestGetLegalMoves_PinnedRook);
+    RUN_TEST(TestGetLegalMoves_KingCannotWalkIntoCheck);
+    RUN_TEST(TestGetLegalMoves_PinnedKnightHasNoMoves);
+    RUN_TEST(TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep);
+    RUN_TEST(TestGetLegalMoves_CannotCaptureKing);
+
+    RUN_TEST(TestCastling_WhiteKingsideAvailable);
+    RUN_TEST(TestCastling_WhiteQueensideAvailable);
+    RUN_TEST(TestCastling_KingsideBlockedByPiece);
+    RUN_TEST(TestCastling_KingsideThroughCheck);
+    RUN_TEST(TestCastling_ApplyKingside);
+    RUN_TEST(TestCastling_ApplyQueenside);
+    RUN_TEST(TestCastling_RightsLostAfterKingMove);
+    RUN_TEST(TestCastling_RightsLostAfterRookMove);
+    RUN_TEST(TestCastling_RightsLostAfterRookCaptured);
+    RUN_TEST(TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd);
+    RUN_TEST(TestIsInCheck_PawnDirectlyInFrontIsNotCheck);
+    RUN_TEST(TestCastling_NormalKingMoveDoesNotMovRook);
+    RUN_TEST(TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare);
 
     return true;
 }
