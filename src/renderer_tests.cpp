@@ -244,20 +244,22 @@ static bool TestRenderer_InitFailsOnArenaExhaustion(void)
     return result == false && rs.pixels == 0;
 }
 
-bool RunRendererTests(AppMemory* memory)
+static const TestEntry k_RendererTests[] = {
+    TEST_ENTRY(TestRenderer_ClearFillsAllPixels),
+    TEST_ENTRY(TestRenderer_DrawRect_BasicFill),
+    TEST_ENTRY(TestRenderer_DrawRect_ClipsLeft),
+    TEST_ENTRY(TestRenderer_DrawRect_ClipsRight),
+    TEST_ENTRY(TestRenderer_DrawRect_ClipsTop),
+    TEST_ENTRY(TestRenderer_DrawRect_ClipsBottom),
+    TEST_ENTRY(TestRenderer_DrawRect_FullyOutOfBounds),
+    TEST_ENTRY(TestRenderer_DrawRect_ZeroSize),
+    TEST_ENTRY(TestRenderer_InitFailsOnArenaExhaustion),
+};
+
+void RunRendererTests(AppMemory* memory, int32* passed, int32* total)
 {
     ASSERT(memory);
     s_Memory = memory;
-
-    RUN_TEST(TestRenderer_ClearFillsAllPixels);
-    RUN_TEST(TestRenderer_DrawRect_BasicFill);
-    RUN_TEST(TestRenderer_DrawRect_ClipsLeft);
-    RUN_TEST(TestRenderer_DrawRect_ClipsRight);
-    RUN_TEST(TestRenderer_DrawRect_ClipsTop);
-    RUN_TEST(TestRenderer_DrawRect_ClipsBottom);
-    RUN_TEST(TestRenderer_DrawRect_FullyOutOfBounds);
-    RUN_TEST(TestRenderer_DrawRect_ZeroSize);
-    RUN_TEST(TestRenderer_InitFailsOnArenaExhaustion);
-
-    return true;
+    RunTestArray(k_RendererTests, sizeof(k_RendererTests) / sizeof(k_RendererTests[0]),
+                 passed, total);
 }

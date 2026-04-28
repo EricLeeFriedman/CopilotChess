@@ -1639,68 +1639,70 @@ static bool TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare(void)
     return true;
 }
 
-bool RunMovesTests(AppMemory* memory)
+static const TestEntry k_MovesTests[] = {
+    TEST_ENTRY(TestPawn_WhiteDoublePush),
+    TEST_ENTRY(TestPawn_BlackDoublePush),
+    TEST_ENTRY(TestPawn_BlockedSinglePush),
+    TEST_ENTRY(TestPawn_BlockedDoublePush),
+    TEST_ENTRY(TestPawn_DiagonalCapture),
+    TEST_ENTRY(TestPawn_NoFriendlyCapture),
+    TEST_ENTRY(TestPawn_EnPassant),
+    TEST_ENTRY(TestPawn_ApplyEnPassant),
+    TEST_ENTRY(TestPawn_Promotion),
+    TEST_ENTRY(TestPawn_ApplyPromotion),
+    TEST_ENTRY(TestPawn_EnPassantTargetTracking),
+
+    TEST_ENTRY(TestKnight_CenterMoves),
+    TEST_ENTRY(TestKnight_CornerMoves),
+    TEST_ENTRY(TestKnight_NoFriendlyCapture),
+    TEST_ENTRY(TestKnight_EnemyCapture),
+
+    TEST_ENTRY(TestRook_OpenBoard),
+    TEST_ENTRY(TestRook_BlockedByFriendly),
+    TEST_ENTRY(TestRook_CapturesEnemy),
+
+    TEST_ENTRY(TestBishop_OpenBoard),
+    TEST_ENTRY(TestBishop_BlockedByFriendly),
+    TEST_ENTRY(TestBishop_CapturesEnemy),
+
+    TEST_ENTRY(TestQueen_OpenBoard),
+    TEST_ENTRY(TestQueen_BlockedByFriendly),
+    TEST_ENTRY(TestQueen_CapturesEnemy),
+
+    TEST_ENTRY(TestIsInCheck_NotInCheck),
+    TEST_ENTRY(TestIsInCheck_ByPawn),
+    TEST_ENTRY(TestIsInCheck_ByKnight),
+    TEST_ENTRY(TestIsInCheck_ByBishop),
+    TEST_ENTRY(TestIsInCheck_ByRook),
+    TEST_ENTRY(TestIsInCheck_ByQueen),
+    TEST_ENTRY(TestIsInCheck_BlockedByPiece),
+    TEST_ENTRY(TestIsInCheck_ByKing),
+
+    TEST_ENTRY(TestGetLegalMoves_PinnedRook),
+    TEST_ENTRY(TestGetLegalMoves_KingCannotWalkIntoCheck),
+    TEST_ENTRY(TestGetLegalMoves_PinnedKnightHasNoMoves),
+    TEST_ENTRY(TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep),
+    TEST_ENTRY(TestGetLegalMoves_CannotCaptureKing),
+
+    TEST_ENTRY(TestCastling_WhiteKingsideAvailable),
+    TEST_ENTRY(TestCastling_WhiteQueensideAvailable),
+    TEST_ENTRY(TestCastling_KingsideBlockedByPiece),
+    TEST_ENTRY(TestCastling_KingsideThroughCheck),
+    TEST_ENTRY(TestCastling_ApplyKingside),
+    TEST_ENTRY(TestCastling_ApplyQueenside),
+    TEST_ENTRY(TestCastling_RightsLostAfterKingMove),
+    TEST_ENTRY(TestCastling_RightsLostAfterRookMove),
+    TEST_ENTRY(TestCastling_RightsLostAfterRookCaptured),
+    TEST_ENTRY(TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd),
+    TEST_ENTRY(TestIsInCheck_PawnDirectlyInFrontIsNotCheck),
+    TEST_ENTRY(TestCastling_NormalKingMoveDoesNotMovRook),
+    TEST_ENTRY(TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare),
+};
+
+void RunMovesTests(AppMemory* memory, int32* passed, int32* total)
 {
     ASSERT(memory);
     s_Memory = memory;
-
-    RUN_TEST(TestPawn_WhiteDoublePush);
-    RUN_TEST(TestPawn_BlackDoublePush);
-    RUN_TEST(TestPawn_BlockedSinglePush);
-    RUN_TEST(TestPawn_BlockedDoublePush);
-    RUN_TEST(TestPawn_DiagonalCapture);
-    RUN_TEST(TestPawn_NoFriendlyCapture);
-    RUN_TEST(TestPawn_EnPassant);
-    RUN_TEST(TestPawn_ApplyEnPassant);
-    RUN_TEST(TestPawn_Promotion);
-    RUN_TEST(TestPawn_ApplyPromotion);
-    RUN_TEST(TestPawn_EnPassantTargetTracking);
-
-    RUN_TEST(TestKnight_CenterMoves);
-    RUN_TEST(TestKnight_CornerMoves);
-    RUN_TEST(TestKnight_NoFriendlyCapture);
-    RUN_TEST(TestKnight_EnemyCapture);
-
-    RUN_TEST(TestRook_OpenBoard);
-    RUN_TEST(TestRook_BlockedByFriendly);
-    RUN_TEST(TestRook_CapturesEnemy);
-
-    RUN_TEST(TestBishop_OpenBoard);
-    RUN_TEST(TestBishop_BlockedByFriendly);
-    RUN_TEST(TestBishop_CapturesEnemy);
-
-    RUN_TEST(TestQueen_OpenBoard);
-    RUN_TEST(TestQueen_BlockedByFriendly);
-    RUN_TEST(TestQueen_CapturesEnemy);
-
-    RUN_TEST(TestIsInCheck_NotInCheck);
-    RUN_TEST(TestIsInCheck_ByPawn);
-    RUN_TEST(TestIsInCheck_ByKnight);
-    RUN_TEST(TestIsInCheck_ByBishop);
-    RUN_TEST(TestIsInCheck_ByRook);
-    RUN_TEST(TestIsInCheck_ByQueen);
-    RUN_TEST(TestIsInCheck_BlockedByPiece);
-    RUN_TEST(TestIsInCheck_ByKing);
-
-    RUN_TEST(TestGetLegalMoves_PinnedRook);
-    RUN_TEST(TestGetLegalMoves_KingCannotWalkIntoCheck);
-    RUN_TEST(TestGetLegalMoves_PinnedKnightHasNoMoves);
-    RUN_TEST(TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep);
-    RUN_TEST(TestGetLegalMoves_CannotCaptureKing);
-
-    RUN_TEST(TestCastling_WhiteKingsideAvailable);
-    RUN_TEST(TestCastling_WhiteQueensideAvailable);
-    RUN_TEST(TestCastling_KingsideBlockedByPiece);
-    RUN_TEST(TestCastling_KingsideThroughCheck);
-    RUN_TEST(TestCastling_ApplyKingside);
-    RUN_TEST(TestCastling_ApplyQueenside);
-    RUN_TEST(TestCastling_RightsLostAfterKingMove);
-    RUN_TEST(TestCastling_RightsLostAfterRookMove);
-    RUN_TEST(TestCastling_RightsLostAfterRookCaptured);
-    RUN_TEST(TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd);
-    RUN_TEST(TestIsInCheck_PawnDirectlyInFrontIsNotCheck);
-    RUN_TEST(TestCastling_NormalKingMoveDoesNotMovRook);
-    RUN_TEST(TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare);
-
-    return true;
+    RunTestArray(k_MovesTests, sizeof(k_MovesTests) / sizeof(k_MovesTests[0]),
+                 passed, total);
 }
