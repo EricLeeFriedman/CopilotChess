@@ -530,6 +530,144 @@ static bool TestInput_PromotionClick_NoOpWhenNotPending(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Black promotion picker tests
+// ---------------------------------------------------------------------------
+
+// Helper: set up a position with only a Black pawn at e2 (rank 1, file 4)
+// ready to promote to e1 (rank 0, file 4), with both kings on the board and
+// the promotion square clear.  Black to move.
+static void SetupBlackPromoPosition(GameState* gs)
+{
+    InitGameState(gs);
+    gs->side_to_move = COLOR_BLACK;
+    // Remove the Black pawn from its standard e7 start square.
+    gs->board.squares[6][4] = { PIECE_NONE, COLOR_NONE };
+    // Place a Black pawn at e2 (one step from promotion), overwriting the
+    // White pawn that occupies that square in the standard opening position.
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    // Clear e1 (White king's standard square) to open the promotion square.
+    gs->board.squares[0][4] = { PIECE_NONE, COLOR_NONE };
+    // Place the White king on a3 (rank 2, file 0), which is empty in the
+    // standard opening and safely away from e1 and the Black king.
+    gs->board.squares[2][0] = { PIECE_KING, COLOR_WHITE };
+    // Disable castling because the White king is no longer on its start square.
+    gs->castling_white_kingside  = false;
+    gs->castling_white_queenside = false;
+}
+
+// Dragging a Black pawn from e2 and dropping it on e1 must enter pending
+// promotion rather than immediately applying a move.
+// e2 (rank 1, file 4): sq_y=40+(7-1)*80=520; center=(680,560)
+// e1 (rank 0, file 4): sq_y=40+(7-0)*80=600; center=(680,640)
+static bool TestInput_DragEnd_SetsPromotionPending_Black(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupBlackPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80); // pick up e2
+    if (!input.dragging) return false;
+
+    bool moved = InputHandleDragEnd(&input, &gs, 680, 640, 320, 40, 80); // drop on e1
+
+    if (moved)                        return false; // no move yet
+    if (input.dragging)               return false; // drag ended
+    if (!input.pending_promotion)     return false;
+    if (input.promo_from_rank != 1)   return false;
+    if (input.promo_from_file != 4)   return false;
+    if (input.promo_to_rank   != 0)   return false;
+    if (input.promo_to_file   != 4)   return false;
+    // Board unchanged — Black pawn still at e2.
+    if (gs.board.squares[1][4].piece != PIECE_PAWN) return false;
+    if (gs.board.squares[0][4].piece != PIECE_NONE) return false;
+    return true;
+}
+
+// Clicking rank 0, file 4 (e1, index 0 = PIECE_QUEEN) during a Black pending
+// promotion must apply a queen promotion.
+// rank 0, file 4 center: sq_y=40+(7-0)*80=600; center=(680,640)
+static bool TestInput_PromotionClick_AppliesQueen_Black(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupBlackPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 640, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    // Click e1 (rank 0, file 4) — Black picker index 0 = Queen.
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 640, 320, 40, 80);
+
+    if (!moved)                                       return false;
+    if (input.pending_promotion)                      return false; // cleared
+    if (gs.board.squares[0][4].piece != PIECE_QUEEN)  return false;
+    if (gs.board.squares[0][4].color != COLOR_BLACK)  return false;
+    if (gs.board.squares[1][4].piece != PIECE_NONE)   return false; // e2 empty
+    if (gs.side_to_move != COLOR_WHITE)               return false;
+    return true;
+}
+
+// Clicking rank 3, file 4 (index 3 = PIECE_KNIGHT) must apply a knight
+// underpromotion for Black.
+// rank 3, file 4 center: sq_y=40+(7-3)*80=360; center=(680,400)
+static bool TestInput_PromotionClick_AppliesKnight_Black(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupBlackPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 640, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    // Click rank 3, file 4 — Black picker index 3 = Knight.
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 400, 320, 40, 80);
+
+    if (!moved)                                        return false;
+    if (input.pending_promotion)                       return false;
+    if (gs.board.squares[0][4].piece != PIECE_KNIGHT)  return false;
+    if (gs.board.squares[0][4].color != COLOR_BLACK)   return false;
+    return true;
+}
+
+// Clicking rank 4, file 4 (one step below the picker) must cancel the Black
+// pending promotion without applying any move.
+// rank 4, file 4 center: sq_y=40+(7-4)*80=280; center=(680,320)
+static bool TestInput_PromotionClick_CancelsOnOutsideRange_Black(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupBlackPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 640, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    // For Black, idx = rank = 4, which is outside [0, 4) — must cancel.
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 320, 320, 40, 80);
+
+    if (moved)                   return false;
+    if (input.pending_promotion) return false; // cancelled
+    return true;
+}
 
 
 static const TestEntry k_InputTests[] = {
@@ -558,6 +696,10 @@ static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_PromotionClick_CancelsOnOutsideRange),
     TEST_ENTRY(TestInput_PromotionClick_CancelsOutsideBoard),
     TEST_ENTRY(TestInput_PromotionClick_NoOpWhenNotPending),
+    TEST_ENTRY(TestInput_DragEnd_SetsPromotionPending_Black),
+    TEST_ENTRY(TestInput_PromotionClick_AppliesQueen_Black),
+    TEST_ENTRY(TestInput_PromotionClick_AppliesKnight_Black),
+    TEST_ENTRY(TestInput_PromotionClick_CancelsOnOutsideRange_Black),
 };
 
 void RunInputTests(AppMemory* memory, int32* passed, int32* total)
