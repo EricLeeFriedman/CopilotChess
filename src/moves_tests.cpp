@@ -962,6 +962,119 @@ static bool TestIsInCheck_ByKing(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// GetLegalMoves: pinned rook cannot move off the pin ray.
+// White king on e1 (rank 0, file 4), white rook on e4 (rank 3, file 4),
+// black rook on e8 (rank 7, file 4).  The white rook is pinned along the
+// e-file; any move to a different file would expose the king.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_PinnedRook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,  COLOR_WHITE };
+    gs->board.squares[3][4] = { PIECE_ROOK,  COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK,  COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // White rook may only move along the e-file (ranks 1-2 toward king side
+    // are blocked by king, but rank-wise moves up to the enemy rook are fine).
+    // It must NOT appear at any non-e-file square in the legal list.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.from_rank == 3 && m.from_file == 4)
+        {
+            // Rook move — must stay on file 4.
+            if (m.to_file != 4) return false;
+        }
+    }
+
+    // The rook should be able to capture on e8 (rank 7, file 4).
+    if (!FindMove(&legal, 3, 4, 7, 4)) return false;
+    // The rook should NOT be able to move to, say, d4 (rank 3, file 3).
+    if (FindMove(&legal, 3, 4, 3, 3)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// GetLegalMoves: king cannot walk into check.
+// White king on e1 (rank 0, file 4), black rook on f8 (rank 7, file 5).
+// The f-file is controlled by the rook, so the king must not step to f1 or f2.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_KingCannotWalkIntoCheck(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[7][5] = { PIECE_ROOK, COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // King must not move onto file 5 (f-file) — controlled by the black rook.
+    if (FindMove(&legal, 0, 4, 0, 5)) return false; // f1
+    if (FindMove(&legal, 0, 4, 1, 5)) return false; // f2
+    // King may still move to d1, d2, e2.
+    if (!FindMove(&legal, 0, 4, 0, 3)) return false; // d1
+    if (!FindMove(&legal, 0, 4, 1, 3)) return false; // d2
+    if (!FindMove(&legal, 0, 4, 1, 4)) return false; // e2
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// GetLegalMoves: pinned knight has no legal moves.
+// White king on e1 (rank 0, file 4), white knight on e3 (rank 2, file 4),
+// black rook on e8 (rank 7, file 4).  The knight is on the e-file between
+// king and rook; moving it in any L-shape exposes the king.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_PinnedKnightHasNoMoves(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING,   COLOR_WHITE };
+    gs->board.squares[2][4] = { PIECE_KNIGHT, COLOR_WHITE };
+    gs->board.squares[7][4] = { PIECE_ROOK,   COLOR_BLACK };
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // No knight move should appear in the legal list.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        if (legal.moves[i].from_rank == 2 && legal.moves[i].from_file == 4)
+            return false;
+    }
+    return true;
+}
+
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -1004,6 +1117,10 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestIsInCheck_ByQueen);
     RUN_TEST(TestIsInCheck_BlockedByPiece);
     RUN_TEST(TestIsInCheck_ByKing);
+
+    RUN_TEST(TestGetLegalMoves_PinnedRook);
+    RUN_TEST(TestGetLegalMoves_KingCannotWalkIntoCheck);
+    RUN_TEST(TestGetLegalMoves_PinnedKnightHasNoMoves);
 
     return true;
 }

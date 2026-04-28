@@ -140,6 +140,23 @@ Own legal move generation, check detection, checkmate detection, and any support
 - Returns `true` if any generated move lands on the king's square.
 - Efficient enough to call repeatedly during legal move filtering (no dynamic allocation; uses stack-local `GameState` and `MoveList`).
 
+#### King Move Generation
+
+`GenerateKingMoves(const GameState*, MoveList*)` appends all candidate king moves for `gs->side_to_move`:
+
+- **One-square steps** — all eight directions: orthogonal and diagonal.
+- **Board filtering** — destinations outside the 8×8 grid are discarded.
+- **Friendly-piece filtering** — destinations occupied by `side_to_move` are discarded. Destinations occupied by an enemy piece are legal (capture).
+
+#### Legal Move Filtering
+
+`GetLegalMoves(const GameState*, MoveList*)` appends all **fully legal** moves for `gs->side_to_move`:
+
+- Generates all pseudo-legal candidate moves by calling `GeneratePawnMoves`, `GenerateKnightMoves`, `GenerateRookMoves`, `GenerateBishopMoves`, `GenerateQueenMoves`, and `GenerateKingMoves`.
+- For each candidate move, applies the move to a stack-local copy of the `GameState`, calls `IsInCheck` on the resulting board for the moving side, and discards the move if the king is in check.
+- Handles all pinned-piece cases and king-into-check cases automatically through the apply-and-test approach.
+- No dynamic allocation; all temporaries are stack-local.
+
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.

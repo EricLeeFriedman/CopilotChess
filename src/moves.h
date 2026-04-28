@@ -64,6 +64,12 @@ void GenerateBishopMoves(const GameState* gs, MoveList* list);
 // Does not clear list->count before appending.
 void GenerateQueenMoves(const GameState* gs, MoveList* list);
 
+// Append all candidate king moves for gs->side_to_move to 'list'.
+// Steps one square in each of the eight directions. Filters off-board
+// squares and squares occupied by friendly pieces.
+// Does not clear list->count before appending.
+void GenerateKingMoves(const GameState* gs, MoveList* list);
+
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);
 
@@ -71,3 +77,9 @@ void ApplyMove(GameState* gs, const Move* move);
 // Uses the existing move generators to enumerate all enemy pseudo-legal attacks.
 // Efficient enough to call repeatedly (e.g., during legal move filtering).
 bool IsInCheck(const Board* board, Color color);
+
+// Append all fully legal moves for gs->side_to_move to 'out'.
+// Generates all pseudo-legal moves then discards any that leave the moving
+// side's king in check (handles pins and king-walks-into-check automatically).
+// Does not clear out->count before appending.
+void GetLegalMoves(const GameState* gs, MoveList* out);
