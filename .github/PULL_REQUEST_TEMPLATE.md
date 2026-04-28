@@ -4,7 +4,9 @@
 
 ## Docs Updated
 
-<!-- List each doc updated and why. Consult the doc ownership map in AGENTS.md. -->
+<!-- Consult the doc ownership map in AGENTS.md. List each applicable doc and why it was updated.
+     If a row in the ownership map applies but no update was needed, say why (e.g., "docs/architecture.md — no new subsystems added").
+     If no rows apply, state that explicitly. -->
 
 -
 
@@ -28,7 +30,9 @@
 
 ## Checklist
 
-- [ ] Requirements and docs still match the implementation
+- [ ] Doc ownership map checked; each applicable row listed in "Docs Updated" above (or N/A with reason)
 - [ ] No third-party libraries were introduced
-- [ ] In-application tests were added or updated when needed
+- [ ] Each new or changed behavior is covered by a named test that fails if that specific behavior breaks
+- [ ] Failure paths, init/shutdown behavior, and Win32 lifecycle edges verified or stated N/A
+- [ ] All affected chess rule surfaces verified for both White and Black (or N/A — not a chess-rules change)
 - [ ] The change was self-reviewed for architectural drift

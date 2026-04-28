@@ -557,6 +557,18 @@ jobs:
           if github_output:
               with open(github_output, "a") as f:
                   f.write(f"review_event={review['event']}\n")
+
+          # Write a compact blocking-findings summary for the follow-up ping step.
+          blocking_items = review.get("blocking", [])
+          if blocking_items:
+              lines = []
+              for item in blocking_items:
+                  body_text = str(item.get("body", "")).lstrip("@copilot").strip()
+                  path = str(item.get("path", ""))
+                  line_num = item.get("line", "")
+                  lines.append(f"- `{path}:{line_num}` — {body_text}")
+              with open("blocking-summary.txt", "w", encoding="utf-8") as f:
+                  f.write("\n".join(lines))
           PYEOF
 
       - name: Ping Copilot to address automated findings
@@ -575,11 +587,22 @@ jobs:
           repo = os.environ["REPO"]
           round_count = int(os.environ.get("ROUND_COUNT", "0")) + 1
 
+          # Include the actual blocking findings so the coding agent doesn't have
+          # to reconstruct context from PR history, which leads to partial fixes.
+          blocking_summary = ""
+          try:
+              with open("blocking-summary.txt", encoding="utf-8") as f:
+                  blocking_summary = f.read().strip()
+          except FileNotFoundError:
+              pass
+
           body = (
             f"@copilot Please address the blocking findings from the automated PR review "
-            f"(review round {round_count}/7). "
-            "After pushing fixes, re-run tests and update docs if required."
+            f"(review round {round_count}/7).\n"
           )
+          if blocking_summary:
+              body += f"\n**Blocking findings to resolve:**\n{blocking_summary}\n"
+          body += "\nAfter pushing fixes, re-run tests and update docs if required."
 
           payload = json.dumps({"body": body}).encode()
           req = urllib.request.Request(

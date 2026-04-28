@@ -44,7 +44,32 @@ body:
     validations:
       required: true
   - type: textarea
+    id: failure_paths
+    attributes:
+      label: Failure paths and lifecycle edges
+      description: |
+        List error cases, shutdown paths, or asymmetric behavior that must be handled.
+        Examples: arena exhaustion, WM_QUIT safety, init returning false vs crashing,
+        both White and Black paths when logic branches by color.
+    validations:
+      required: true
+
+  - type: textarea
+    id: chess_rule_surfaces
+    attributes:
+      label: Chess rule surfaces affected
+      description: |
+        If this task changes move generation, check/checkmate logic, or any gameplay rule, list the specific
+        rule surfaces involved. Leave blank for non-gameplay tasks.
+        Examples: attacked-square semantics, castling legality, king-capture exclusion,
+        pawn attack direction, promotion (both colors), check detection.
+
+  - type: textarea
     id: docs
     attributes:
-      label: Documentation impact
-      description: Note which repository docs should be updated or confirmed.
+      label: Doc ownership
+      description: |
+        Using the doc ownership map in AGENTS.md, list which docs must be updated and why.
+        If no rows in the ownership map apply, state that explicitly.
+    validations:
+      required: true

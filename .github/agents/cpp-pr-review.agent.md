@@ -59,6 +59,53 @@ Check specifically for repository-specific constraints and failure modes:
 - missing `*_tests.cpp` coverage or missing `RunXxxTests(...)` wiring in `src/main.cpp`
 - documentation drift when the changed code crosses a boundary covered by the doc ownership map in `AGENTS.md`
 
+## Domain-Specific Checklists
+
+Run only the checklists whose trigger condition matches the diff. For each applicable checklist, check every item before posting — report all blocking findings across all triggered checklists in one review pass, not one finding at a time.
+
+### Chess / Move-Legality Checklist
+
+**Trigger**: diff touches move generation, `IsInCheck`, `IsSquareAttackedBy`, king moves, castling, or promotion.
+
+- Pawn attacks are diagonal only; a pawn push forward does not threaten squares.
+- Pinned enemy pieces still attack squares for king-safety purposes (FIDE Article 3.8). `IsSquareAttackedBy` must use pseudo-legal detection, not legal-move reachability.
+- Legal moves must never include capturing the opponent's king. Filter these out in the legality pass.
+- Castling legality: the king may not start on, pass through, or land on an attacked square. Attack checks for transit and destination must use a board with the king removed from its starting square (so the king does not shield sliding-piece rays targeting those squares).
+- Promotion: all four piece types (Q, R, B, N) must be representable. Cover both White and Black promotion paths.
+- When logic branches by player color, both White and Black paths require explicit test coverage.
+- Chess test fixtures must have valid positions (both kings present) unless testing invalid-state handling explicitly. Verify that test premises match the position actually set up.
+
+### Input / Win32 Message Lifecycle Checklist
+
+**Trigger**: diff touches `WM_LBUTTONDOWN`, `WM_LBUTTONUP`, `WM_MOUSEMOVE`, `WM_RBUTTONDOWN`, `WM_CAPTURECHANGED`, `SetCapture`, or `ReleaseCapture`.
+
+- `SetCapture` is called when a drag begins; `ReleaseCapture` is called on both drop and cancel, so button-up is received even when the cursor leaves the client area.
+- `WM_CAPTURECHANGED` handles OS-level capture loss (e.g., alt-tab, window switch) without corrupting input state.
+- Right-click cancels an in-progress drag and returns the piece to origin.
+- Pending promotion state must not be clobbered by unrelated message handlers (e.g., `WM_CAPTURECHANGED` must guard on `dragging` before calling `InputCancelDrag`).
+- Test coverage for the cancel path, the outside-client button-up path, and the capture-loss path.
+
+### New or Modified Subsystem Checklist
+
+**Trigger**: diff adds a new `src/*.cpp` subsystem, wires a new `RunXxxTests` entry, or modifies an existing subsystem's init / shutdown / main-loop integration.
+
+- Init failure: the subsystem must return `false` (or an equivalent failure signal) on init error rather than `ASSERT`ing or crashing.
+- `WM_QUIT` safety: rendering and presentation calls must not execute after `WM_QUIT` sets the running flag to false.
+- Arena exhaustion: `ArenaPushArray` capacity checks must be present; the subsystem must degrade gracefully, not crash.
+- `README.md` Current State section updated to reflect the new or changed end-to-end capability.
+- `docs/architecture.md` updated if a new subsystem or significant structural change was introduced.
+- `docs/testing.md` updated if a new `*_tests.cpp` file was added or `RunTests()` wiring changed.
+
+### Test Adequacy Rules
+
+**Trigger**: always — applies to any test code in the diff.
+
+- Tests assert positive expected values (exact colors, counts, booleans), not just "not background color" or "no crash."
+- For rendering/UI tests: sample pixels at stable observation points after all draw passes have completed, not at positions overwritten by later passes.
+- Each new behavior has a dedicated test whose name states what it proves; the test would fail if that specific behavior broke.
+- Recoverable test-setup failures (arena alloc, `RendererInit`, etc.) must return `false` to the framework; they must not `ASSERT` or abort the test process.
+- When logic branches by player color, both White and Black paths have named test coverage.
+
 Review standards:
 
 - Prefer concrete findings over broad summaries.

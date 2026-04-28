@@ -7,6 +7,17 @@
 - The game must show check and checkmate to the player.
 - After a winner is decided, the game must allow a restart.
 
+### Chess Rule Invariants
+
+These invariants are authoritative for both implementation and review. When in doubt, defer to FIDE Laws of Chess.
+
+- **Attacked-square semantics**: A pinned enemy piece still attacks squares it cannot legally move to. Attack detection for king-safety purposes (king moves, castling, `IsInCheck`) uses pseudo-legal piece reachability, not filtered legal moves. (FIDE Article 3.8)
+- **Legal move filter**: No legal move may result in the moving side remaining in check. The legal-move pass applies after generating candidate moves.
+- **King-capture exclusion**: A move that would capture the opposing king is not a legal move. Legal move generators must filter these out.
+- **Castling legality**: The king may not start on, pass through, or land on a square attacked by the opponent. Attack checks for transit and destination squares must use a board with the king removed from its starting square, so the king does not shield sliding-piece rays targeting those squares.
+- **Pawn attack direction**: A pawn attacks the two diagonal squares in its direction of advance only. A pawn push forward does not attack or threaten squares.
+- **Promotion**: When a pawn reaches the opponent's back rank, it must be promoted to queen, rook, bishop, or knight (player's choice). All four piece types must be selectable. Promotion applies identically for both White and Black.
+
 ## Platform And UX
 
 - Windows only.

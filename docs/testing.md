@@ -61,6 +61,17 @@ No other changes are required — `RunTestArray` iterates the array automaticall
 - Tests run without opening an interactive window when `--test` is passed.
 - New gameplay behavior should add or update tests in the same change whenever practical.
 
+## Test Quality Standards
+
+A test that is present but does not prove correctness is not useful. Follow these rules when writing or reviewing tests.
+
+- **Assert positive expected values.** Tests must assert the exact expected outcome (a specific color value, count, or boolean result), not just the absence of a crash or "not the background color."
+- **Target one invariant per test.** Each test should prove one specific behavior. The test name and any setup comments must state the premise explicitly so a reader can verify that the position or state actually exercises the claimed invariant.
+- **Stable observation points.** For rendering and UI tests, sample pixels only after all draw passes for the frame are complete. Do not sample a pixel that a later draw call in the same frame would overwrite.
+- **Both-color coverage.** When code branches by player color (e.g., pawn direction, promotion picker placement, castling rights), both White and Black paths require named test coverage.
+- **Valid test fixtures.** Chess-rule tests must use positions with both kings present unless the explicit purpose of the test is invalid-state handling. Verify that the fixture position actually sets up the invariant you intend to test.
+- **Recoverable failures return false.** A test-helper or subsystem init failure (arena exhaustion, `RendererInit` returning `false`, etc.) must cause the test to return `false` to the test framework. Do not `ASSERT` or abort — that would stop all subsequent tests and hide their results.
+
 ## Why This Matters
 
 The project goal is to practice harness engineering. That means the application must expose enough observable behavior for an agent to verify changes without relying on a separate test executable or manual-only checking.
