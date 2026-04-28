@@ -236,7 +236,9 @@ void DrawBoard(RendererState*   rs,
                int32            square_size,
                int8             selected_rank,
                int8             selected_file,
-               const MoveList*  legal_moves)
+               const MoveList*  legal_moves,
+               int8             hide_rank,
+               int8             hide_file)
 {
     ASSERT(rs && gs);
 
@@ -300,6 +302,10 @@ void DrawBoard(RendererState*   rs,
     {
         for (int32 file = 0; file < 8; ++file)
         {
+            // Skip the square whose piece is being dragged — it will be drawn
+            // at the cursor position by the caller instead.
+            if (rank == hide_rank && file == hide_file) continue;
+
             const Square& sq = gs->board.squares[rank][file];
             if (sq.piece == PIECE_NONE) continue;
 
@@ -308,5 +314,61 @@ void DrawBoard(RendererState*   rs,
 
             DrawPiece(rs, sq_x, sq_y, square_size, sq.piece, sq.color);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public helper — floating piece during drag
+// ---------------------------------------------------------------------------
+
+void DrawPieceAt(RendererState* rs,
+                 PieceType      type,
+                 Color          piece_color,
+                 int32          center_x,
+                 int32          center_y,
+                 int32          sq_size)
+{
+    // DrawPiece expects the top-left corner of the square, so back-compute
+    // it from the desired center.
+    int32 sq_x = center_x - sq_size / 2;
+    int32 sq_y = center_y - sq_size / 2;
+    DrawPiece(rs, sq_x, sq_y, sq_size, type, piece_color);
+}
+
+// ---------------------------------------------------------------------------
+// Promotion picker
+// ---------------------------------------------------------------------------
+
+// Promotion piece order — must match the order used in input.cpp.
+static const PieceType k_PickerPieces[4] = {
+    PIECE_QUEEN, PIECE_ROOK, PIECE_BISHOP, PIECE_KNIGHT
+};
+
+// Golden highlight for the promotion picker squares.
+static const Pixel BOARD_PROMO_PICK = { 0, 190, 240, 0 };  // BGR ≈ #F0BE00
+
+void DrawPromotionPicker(RendererState*   rs,
+                         int32            board_x,
+                         int32            board_y,
+                         int32            square_size,
+                         int8             to_rank,
+                         int8             to_file,
+                         Color            promoting_side)
+{
+    ASSERT(rs);
+
+    for (int32 i = 0; i < 4; ++i)
+    {
+        // White: picker descends from the promotion rank (rank 7).
+        // Black: picker ascends from the promotion rank (rank 0).
+        int8 picker_rank = (promoting_side == COLOR_WHITE)
+                            ? (int8)(to_rank - i)
+                            : (int8)(to_rank + i);
+
+        int32 sq_x = board_x + to_file  * square_size;
+        int32 sq_y = board_y + (7 - picker_rank) * square_size;
+
+        DrawRect(rs, sq_x, sq_y, square_size, square_size, BOARD_PROMO_PICK);
+        DrawPiece(rs, sq_x, sq_y, square_size, k_PickerPieces[i], promoting_side);
     }
 }

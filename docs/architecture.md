@@ -190,6 +190,67 @@ Own legal move generation, check detection, checkmate detection, and any support
 | `GAME_BLACK_WINS` | White is in checkmate (no legal moves, king in check). |
 | `GAME_DRAW` | The side to move has no legal moves and is not in check (stalemate). |
 
+### Input
+
+Own drag-and-drop piece movement state for both players.  No heap allocation; all state lives in the `input` arena.
+
+The input subsystem is implemented in `src/input.h` and `src/input.cpp`.
+
+#### InputState
+
+| Field | Type | Purpose |
+|---|---|---|
+| `dragging` | `bool` | `true` while the left button is held and a piece is being dragged |
+| `drag_from_rank` / `drag_from_file` | `int8` | Source square of the dragged piece; both are `-1` when not dragging |
+| `drag_cursor_x` / `drag_cursor_y` | `int32` | Current cursor pixel position; updated every `WM_MOUSEMOVE` |
+| `legal_moves` | `MoveList` | Legal moves originating from the drag-source square; pre-computed at drag start; kept alive during `pending_promotion` for use by `InputHandlePromotionClick` |
+| `pending_promotion` | `bool` | `true` after a pawn drop on the last rank, while waiting for the player to choose a promotion piece |
+| `promo_from_rank` / `promo_from_file` | `int8` | Source square of the pawn awaiting promotion |
+| `promo_to_rank` / `promo_to_file` | `int8` | Target square on the promotion rank |
+
+#### Coordinate Mapping
+
+`PixelToSquare(px, py, board_x, board_y, square_size, &rank, &file)` converts a window-client pixel to a board square.  Returns `false` when the pixel falls outside the 8×8 board area.  Rank 0 is White's back rank at the bottom of the screen; rank 7 is Black's back rank at the top.
+
+#### Drag Handling
+
+The drag state machine spans three Win32 messages:
+
+| Message | Function | Behaviour |
+|---|---|---|
+| `WM_LBUTTONDOWN` | `InputHandleDragStart` (normal) or `InputHandlePromotionClick` (when `pending_promotion`) | Picks up piece if it belongs to the current player, or resolves the promotion picker |
+| `WM_MOUSEMOVE` | `InputHandleDragMove` | Update `drag_cursor_x/y`; no-op when not dragging |
+| `WM_LBUTTONUP` | `InputHandleDragEnd` | Drop the piece: apply the move if legal and non-promotion; enter `pending_promotion` if the drop is on a promotion rank; otherwise cancel the drag |
+
+#### Promotion Picker
+
+When `InputHandleDragEnd` detects that the drop target is a pawn-promotion square, it does not apply a move immediately.  Instead it sets `pending_promotion = true` and preserves `legal_moves` (which contains all four promotion variants) for use by `InputHandlePromotionClick`.
+
+`InputHandlePromotionClick` maps the next `WM_LBUTTONDOWN` pixel to a picker slot:
+
+| Promoting side | Slot 0 (rank) | Slot 1 | Slot 2 | Slot 3 |
+|---|---|---|---|---|
+| White | rank 7 — Queen | rank 6 — Rook | rank 5 — Bishop | rank 4 — Knight |
+| Black | rank 0 — Queen | rank 1 — Rook | rank 2 — Bishop | rank 3 — Knight |
+
+A click outside the picker column or below/above the four slots cancels the pending promotion without changing the board.
+
+`InputCancelDrag(input)` resets all drag and pending-promotion state immediately (called on `WM_RBUTTONDOWN` or missed button-up recovery).
+
+`InputInit(input)` initialises the struct to "not dragging, no pending promotion" at startup.
+
+`DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` renders the four picker squares over the board using a golden highlight (`BOARD_PROMO_PICK`) with the corresponding piece icon drawn inside each square.  `DrawBoard` is called first with `hide_rank/hide_file` pointing at the source pawn so the board appears without the moving pawn while the picker is visible.
+
+#### Win32 Integration
+
+All three drag messages are handled in `WindowProc`; pixel coordinates are read from `lparam` via signed 16-bit casts (`(int16)LOWORD(lparam)`) to correctly handle coordinates that extend off the client area.
+
+`SetCapture(window)` is called immediately after a successful drag start (i.e., when `g_InputState->dragging` is `true` after `InputHandleDragStart`) so that the window continues to receive `WM_MOUSEMOVE` and `WM_LBUTTONUP` even when the cursor leaves the client area.  `ReleaseCapture()` is called on every `WM_LBUTTONUP` and `WM_RBUTTONDOWN` handler, regardless of whether a drag was active.
+
+`WM_CAPTURECHANGED` is handled carefully: it calls `InputCancelDrag` **only when `g_InputState->dragging` is true**.  When a drag ends on the last rank, `InputHandleDragEnd` sets `pending_promotion = true` and then `WM_LBUTTONUP` calls `ReleaseCapture()`, which immediately fires `WM_CAPTURECHANGED`.  Because the drag sub-state is already cleared at that point, the guard prevents the expected post-drop capture loss from incorrectly cancelling the promotion picker.  When the OS revokes capture externally (e.g. an `Alt+Tab` or modal dialog while the button is still held down), `dragging` is still true, so `InputCancelDrag` is called normally.
+
+The board layout constants (`BOARD_X = 320`, `BOARD_Y = 40`, `BOARD_SQUARE_SIZE = 80`) are defined as file-scope `static const int32` in `src/main.cpp` and shared between the render loop and `WindowProc`.
+
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.
@@ -198,11 +259,11 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 
 #### Board Rendering
 
-`DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves)` draws the complete board view into the renderer's pixel buffer in two passes:
+`DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves, hide_rank, hide_file)` draws the complete board view into the renderer's pixel buffer in two passes:
 
 1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). Highlighted squares (selected piece and valid-move targets) are tinted green. Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
 
-2. **Piece pass** — calls `DrawPiece` for every non-empty square. Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
+2. **Piece pass** — calls the internal `DrawPiece` for every non-empty square, except the square identified by `hide_rank`/`hide_file` (used during drag so the piece renders only at the cursor rather than on the board). Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
 
 | Piece | Shape |
 |---|---|
@@ -212,6 +273,10 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 | Bishop | Ball on a narrow stem + flat base + tip orb |
 | Queen | Large circle body + three crown orbs |
 | King | Rectangle body + prominent cross on top |
+
+`DrawPieceAt(rs, type, color, center_x, center_y, sq_size)` renders a single piece centered at an arbitrary pixel position.  Called by the render loop to draw the floating piece under the cursor during a drag.
+
+`DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` overlays four golden-highlighted squares at the promotion file (Queen, Rook, Bishop, Knight in slot order) so the player can click to choose a promotion piece.
 
 The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 

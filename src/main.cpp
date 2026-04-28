@@ -4,11 +4,19 @@
 #include "memory.h"
 #include "renderer.h"
 #include "moves.h"
+#include "input.h"
 #include "ui.h"
 
 static AppMemory     g_Memory;
 static RendererState g_Renderer;
 static GameState*    g_GameState;
+static InputState*   g_InputState;
+
+// Board layout constants — shared between the render loop and WindowProc.
+static const int32 BOARD_SQUARE_SIZE = 80;
+static const int32 BOARD_PX          = BOARD_SQUARE_SIZE * 8; // 640
+static const int32 BOARD_X           = (1280 - BOARD_PX) / 2; // 320
+static const int32 BOARD_Y           = (720  - BOARD_PX) / 2; // 40
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 static bool RunTests(void);
@@ -74,6 +82,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
     g_GameState = ArenaPushType(&g_Memory.game_state, GameState);
     InitGameState(g_GameState);
 
+    g_InputState = ArenaPushType(&g_Memory.input, InputState);
+    InputInit(g_InputState);
+
     ShowWindow(window, showCode);
 
     bool running = true;
@@ -95,16 +106,45 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
 
-        // Board: 640x640, centered in the 1280x720 window
-        static const int32 SQUARE_SIZE = 80;
-        static const int32 BOARD_PX    = SQUARE_SIZE * 8; // 640
-        int32 board_x = (1280 - BOARD_PX) / 2;           // 320
-        int32 board_y = (720  - BOARD_PX) / 2;           // 40
+        if (g_InputState->pending_promotion)
+        {
+            // Board is drawn normally; the source pawn is hidden so the picker
+            // squares stand out on their own.
+            DrawBoard(&g_Renderer, g_GameState,
+                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                      -1, -1, nullptr,
+                      g_InputState->promo_from_rank, g_InputState->promo_from_file);
 
-        DrawBoard(&g_Renderer, g_GameState,
-                  board_x, board_y, SQUARE_SIZE,
-                  -1, -1,   // no selection
-                  nullptr); // no legal moves
+            DrawPromotionPicker(&g_Renderer,
+                                BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                                g_InputState->promo_to_rank,
+                                g_InputState->promo_to_file,
+                                g_GameState->side_to_move);
+        }
+        else if (g_InputState->dragging)
+        {
+            int8           from_rank = g_InputState->drag_from_rank;
+            int8           from_file = g_InputState->drag_from_file;
+            const Square&  dragged   = g_GameState->board.squares[from_rank][from_file];
+
+            // Highlight the source square and show legal-move dots; hide the
+            // piece there so it renders only at the cursor (floating).
+            DrawBoard(&g_Renderer, g_GameState,
+                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                      from_rank, from_file,
+                      &g_InputState->legal_moves,
+                      from_rank, from_file);
+
+            DrawPieceAt(&g_Renderer, dragged.piece, dragged.color,
+                        g_InputState->drag_cursor_x, g_InputState->drag_cursor_y,
+                        BOARD_SQUARE_SIZE);
+        }
+        else
+        {
+            DrawBoard(&g_Renderer, g_GameState,
+                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                      -1, -1, nullptr);
+        }
 
         PresentFrame(&g_Renderer, window);
     }
@@ -120,6 +160,62 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
         {
             PostQuitMessage(0);
         } return 0;
+
+        case WM_LBUTTONDOWN:
+        {
+            // LOWORD/HIWORD give unsigned 16-bit values; cast via int16 to
+            // correctly sign-extend coordinates that extend off the client area.
+            int32 px = (int32)(int16)LOWORD(lparam);
+            int32 py = (int32)(int16)HIWORD(lparam);
+            if (g_InputState->pending_promotion)
+                InputHandlePromotionClick(g_InputState, g_GameState,
+                                          px, py,
+                                          BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+            else
+            {
+                InputHandleDragStart(g_InputState, g_GameState,
+                                     px, py,
+                                     BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+                // Capture the mouse so WM_LBUTTONUP is received even if the
+                // button is released outside the client area.
+                if (g_InputState->dragging)
+                    SetCapture(window);
+            }
+        } return 0;
+
+        case WM_MOUSEMOVE:
+        {
+            int32 px = (int32)(int16)LOWORD(lparam);
+            int32 py = (int32)(int16)HIWORD(lparam);
+            InputHandleDragMove(g_InputState, px, py);
+        } return 0;
+
+        case WM_LBUTTONUP:
+        {
+            int32 px = (int32)(int16)LOWORD(lparam);
+            int32 py = (int32)(int16)HIWORD(lparam);
+            InputHandleDragEnd(g_InputState, g_GameState,
+                               px, py,
+                               BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+            ReleaseCapture();
+        } return 0;
+
+        case WM_RBUTTONDOWN:
+        {
+            InputCancelDrag(g_InputState);
+            ReleaseCapture();
+        } return 0;
+
+        case WM_CAPTURECHANGED:
+        {
+            // The OS revoked mouse capture (e.g. Alt+Tab or a modal dialog).
+            // Only cancel if a drag is in progress; do NOT cancel when in
+            // pending_promotion state, because that state deliberately releases
+            // capture (via ReleaseCapture in WM_LBUTTONUP) before the picker
+            // click arrives, so WM_CAPTURECHANGED is expected and benign there.
+            if (g_InputState->dragging)
+                InputCancelDrag(g_InputState);
+        } return 0;
     }
 
     return DefWindowProc(window, message, wparam, lparam);
@@ -130,6 +226,7 @@ void RunBoardTests(AppMemory* memory, int32* passed, int32* total);
 void RunMovesTests(AppMemory* memory, int32* passed, int32* total);
 void RunRendererTests(AppMemory* memory, int32* passed, int32* total);
 void RunUITests(AppMemory* memory, int32* passed, int32* total);
+void RunInputTests(AppMemory* memory, int32* passed, int32* total);
 
 static bool RunTests(void)
 {
@@ -141,6 +238,7 @@ static bool RunTests(void)
     RunMovesTests(&g_Memory,    &passed, &total);
     RunRendererTests(&g_Memory, &passed, &total);
     RunUITests(&g_Memory,       &passed, &total);
+    RunInputTests(&g_Memory,    &passed, &total);
 
     uint8 summary[64];
     wsprintfA((LPSTR)summary, "%d/%d tests passed\n", passed, total);
