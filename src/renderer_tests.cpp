@@ -229,6 +229,61 @@ static bool TestRenderer_DrawRect_ZeroSize(void)
     return true;
 }
 
+static bool TestRenderer_DrawFilledCircle_CenterPixelSet(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = MakeRenderer(20, 20);
+
+    Pixel bg  = MakePixel(0, 0, 0);
+    Pixel fg  = MakePixel(255, 0, 0);
+    ClearBuffer(&rs, bg);
+    DrawFilledCircle(&rs, 10, 10, 4, fg); // circle at (10,10) radius 4
+
+    // Centre pixel must be set
+    if (!PixelEq(rs.pixels[10 * rs.width + 10], fg)) return false;
+
+    // Corner pixels must remain background (outside circle)
+    if (!PixelEq(rs.pixels[0], bg)) return false;
+    if (!PixelEq(rs.pixels[rs.width - 1], bg)) return false;
+
+    return true;
+}
+
+static bool TestRenderer_DrawFilledCircle_ZeroRadius(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = MakeRenderer(8, 8);
+
+    Pixel bg = MakePixel(20, 20, 20);
+    Pixel fg = MakePixel(100, 100, 100);
+    ClearBuffer(&rs, bg);
+    DrawFilledCircle(&rs, 4, 4, 0, fg); // radius 0 — nothing drawn
+
+    int32 total = rs.width * rs.height;
+    for (int32 i = 0; i < total; ++i)
+        if (!PixelEq(rs.pixels[i], bg)) return false;
+
+    return true;
+}
+
+static bool TestRenderer_DrawFilledCircle_ClipsToBuffer(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = MakeRenderer(8, 8);
+
+    Pixel bg = MakePixel(0, 0, 0);
+    Pixel fg = MakePixel(0, 255, 0);
+    ClearBuffer(&rs, bg);
+    // Centre well outside the buffer; should clip cleanly with no crash
+    DrawFilledCircle(&rs, -20, -20, 5, fg);
+
+    int32 total = rs.width * rs.height;
+    for (int32 i = 0; i < total; ++i)
+        if (!PixelEq(rs.pixels[i], bg)) return false;
+
+    return true;
+}
+
 static bool TestRenderer_InitFailsOnArenaExhaustion(void)
 {
     // Build a tiny arena backed by a stack buffer that is too small for any pixel buffer.
@@ -254,6 +309,9 @@ static const TestEntry k_RendererTests[] = {
     TEST_ENTRY(TestRenderer_DrawRect_FullyOutOfBounds),
     TEST_ENTRY(TestRenderer_DrawRect_ZeroSize),
     TEST_ENTRY(TestRenderer_InitFailsOnArenaExhaustion),
+    TEST_ENTRY(TestRenderer_DrawFilledCircle_CenterPixelSet),
+    TEST_ENTRY(TestRenderer_DrawFilledCircle_ZeroRadius),
+    TEST_ENTRY(TestRenderer_DrawFilledCircle_ClipsToBuffer),
 };
 
 void RunRendererTests(AppMemory* memory, int32* passed, int32* total)

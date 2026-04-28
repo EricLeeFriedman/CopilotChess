@@ -3,9 +3,12 @@
 
 #include "memory.h"
 #include "renderer.h"
+#include "moves.h"
+#include "ui.h"
 
-static AppMemory    g_Memory;
+static AppMemory     g_Memory;
 static RendererState g_Renderer;
+static GameState*    g_GameState;
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 static bool RunTests(void);
@@ -40,12 +43,19 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         return 1;
     }
 
+    // Adjust so the CLIENT area is exactly 1280×720. CreateWindowEx dimensions
+    // include the title bar and borders, so compensate using AdjustWindowRect.
+    RECT desired_client = { 0, 0, 1280, 720 };
+    AdjustWindowRect(&desired_client, WS_OVERLAPPEDWINDOW, FALSE);
+    int32 window_w = (int32)(desired_client.right  - desired_client.left);
+    int32 window_h = (int32)(desired_client.bottom - desired_client.top);
+
     HWND window = CreateWindowEx(
         0,
         "CopilotChess",
         "CopilotChess",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720,
+        CW_USEDEFAULT, CW_USEDEFAULT, window_w, window_h,
         0, 0, instance, 0
     );
 
@@ -60,6 +70,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         MessageBoxA(0, "Failed to initialize renderer.", "Error", MB_OK | MB_ICONERROR);
         return 1;
     }
+
+    g_GameState = ArenaPushType(&g_Memory.game_state, GameState);
+    InitGameState(g_GameState);
 
     ShowWindow(window, showCode);
 
@@ -81,6 +94,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
 
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
+
+        // Board: 640x640, centered in the 1280x720 window
+        static const int32 SQUARE_SIZE = 80;
+        static const int32 BOARD_PX    = SQUARE_SIZE * 8; // 640
+        int32 board_x = (1280 - BOARD_PX) / 2;           // 320
+        int32 board_y = (720  - BOARD_PX) / 2;           // 40
+
+        DrawBoard(&g_Renderer, g_GameState,
+                  board_x, board_y, SQUARE_SIZE,
+                  -1, -1,   // no selection
+                  nullptr); // no legal moves
+
         PresentFrame(&g_Renderer, window);
     }
 

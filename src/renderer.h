@@ -34,5 +34,9 @@ void         ClearBuffer(RendererState* rs, Pixel color);
 // Clips silently to the buffer bounds.
 void         DrawRect(RendererState* rs, int32 x, int32 y, int32 w, int32 h, Pixel color);
 
+// Fill a circle with a solid colour.
+// Uses integer-only arithmetic; clips silently to the buffer bounds.
+void         DrawFilledCircle(RendererState* rs, int32 cx, int32 cy, int32 radius, Pixel color);
+
 // Blit the pixel buffer to the window client area via StretchDIBits.
 void         PresentFrame(RendererState* rs, HWND window);
