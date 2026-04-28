@@ -158,7 +158,7 @@ Own legal move generation, check detection, checkmate detection, and any support
 - Castling right for that side must be set in `GameState`.
 - King must be on its starting square (e1 / e8) and the relevant rook must be on its corner (h-file for kingside, a-file for queenside).
 - All squares between king and rook must be empty.
-- The king must not start in check, pass through a checked square, or land on a checked square. (These three squares are tested with the internal `IsSquareAttackedBy` helper.)
+- The king must not start in check, pass through a checked square, or land on a checked square. The start-square check uses the live board; transit and destination checks use a temporary board copy with the king removed from its starting square, so that sliding-piece attacks that are currently masked by the king are correctly detected (e.g., an enemy rook behind the king that would control the transit squares once the king moves).
 - Generated castling moves have `is_castling = true`; the king's destination is g-file (kingside) or c-file (queenside).
 
 #### Legal Move Filtering

@@ -427,6 +427,14 @@ void GenerateCastlingMoves(const GameState* gs, MoveList* list)
     // Helper: castle if rights are set, the pieces are in position, path is clear,
     // and the king neither starts, passes through, nor lands on an attacked square.
 
+    // Build a board copy with the king removed from its starting square.
+    // This is used to check whether the transit and destination squares are
+    // attacked — the king must not be present on e1/e8 for those checks
+    // because it would otherwise shadow sliding-piece attacks along the back
+    // rank that would be uncovered once the king actually moves.
+    Board board_no_king = *board;
+    board_no_king.squares[back_rank][4] = { PIECE_NONE, COLOR_NONE };
+
     // Kingside castling: king from e-file (4) to g-file (6); rook from h-file (7) to f-file (5).
     const bool ks_right = (color == COLOR_WHITE) ? gs->castling_white_kingside
                                                   : gs->castling_black_kingside;
@@ -441,10 +449,12 @@ void GenerateCastlingMoves(const GameState* gs, MoveList* list)
             if (board->squares[back_rank][5].piece == PIECE_NONE &&
                 board->squares[back_rank][6].piece == PIECE_NONE)
             {
-                // King must not start in check, pass through check, or land in check.
-                if (!IsSquareAttackedBy(board, back_rank, 4, enemy) &&
-                    !IsSquareAttackedBy(board, back_rank, 5, enemy) &&
-                    !IsSquareAttackedBy(board, back_rank, 6, enemy))
+                // King must not start in check (checked on the original board),
+                // and must not pass through or land on an attacked square (checked
+                // on the king-removed board to expose any discoveries along the rank).
+                if (!IsSquareAttackedBy(board,          back_rank, 4, enemy) &&
+                    !IsSquareAttackedBy(&board_no_king, back_rank, 5, enemy) &&
+                    !IsSquareAttackedBy(&board_no_king, back_rank, 6, enemy))
                 {
                     ASSERT(list->count < MAX_MOVES_PER_POSITION);
                     Move& m         = list->moves[list->count++];
@@ -475,11 +485,12 @@ void GenerateCastlingMoves(const GameState* gs, MoveList* list)
                 board->squares[back_rank][2].piece == PIECE_NONE &&
                 board->squares[back_rank][1].piece == PIECE_NONE)
             {
-                // King must not start in check, pass through d-file, or land on c-file under attack.
+                // King must not start in check (original board), and must not pass
+                // through d-file or land on c-file under attack (king-removed board).
                 // (The b-file only needs to be empty, not unattacked.)
-                if (!IsSquareAttackedBy(board, back_rank, 4, enemy) &&
-                    !IsSquareAttackedBy(board, back_rank, 3, enemy) &&
-                    !IsSquareAttackedBy(board, back_rank, 2, enemy))
+                if (!IsSquareAttackedBy(board,          back_rank, 4, enemy) &&
+                    !IsSquareAttackedBy(&board_no_king, back_rank, 3, enemy) &&
+                    !IsSquareAttackedBy(&board_no_king, back_rank, 2, enemy))
                 {
                     ASSERT(list->count < MAX_MOVES_PER_POSITION);
                     Move& m         = list->moves[list->count++];

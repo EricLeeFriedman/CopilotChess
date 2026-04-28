@@ -1591,6 +1591,54 @@ static bool TestGetLegalMoves_CannotCaptureKing(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Regression: queenside castling must be illegal when an enemy rook on the
+// h-file would attack the transit/destination squares once the king vacates
+// its starting square.
+//
+// Setup:
+//   White king on e1 (rank 0, file 4), White rook on a1 (rank 0, file 0).
+//   Black rook on h1 (rank 0, file 7), Black king on e8 (rank 7, file 4).
+//
+// With the White king on e1, the Black rook on h1 attacks g1, f1, and is
+// blocked by the king on e1.  Once the king moves away (as it does during
+// queenside castling), the rook would attack d1 and c1 — the transit and
+// destination squares.  GenerateCastlingMoves must detect this by checking
+// those squares on a board with the king removed from e1.
+// ---------------------------------------------------------------------------
+static bool TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // e1
+    gs->board.squares[0][0] = { PIECE_ROOK, COLOR_WHITE }; // a1 (queenside castling rook)
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_BLACK }; // h1 — attacks d1/c1 once king leaves e1
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // e8
+
+    gs->castling_white_queenside = true;
+    gs->castling_white_kingside  = false;
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Queenside castling (e1 -> c1) must NOT appear in legal moves.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.is_castling && m.from_file == 4 && m.to_file == 2)
+            return false; // illegal castle must be absent
+    }
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -1652,6 +1700,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd);
     RUN_TEST(TestIsInCheck_PawnDirectlyInFrontIsNotCheck);
     RUN_TEST(TestCastling_NormalKingMoveDoesNotMovRook);
+    RUN_TEST(TestCastling_QueensideIllegalWhenRookAttacksThroughKingSquare);
 
     return true;
 }
