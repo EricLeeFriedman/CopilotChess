@@ -106,7 +106,22 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
 
-        if (g_InputState->dragging)
+        if (g_InputState->pending_promotion)
+        {
+            // Board is drawn normally; the source pawn is hidden so the picker
+            // squares stand out on their own.
+            DrawBoard(&g_Renderer, g_GameState,
+                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                      -1, -1, nullptr,
+                      g_InputState->promo_from_rank, g_InputState->promo_from_file);
+
+            DrawPromotionPicker(&g_Renderer,
+                                BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                                g_InputState->promo_to_rank,
+                                g_InputState->promo_to_file,
+                                g_GameState->side_to_move);
+        }
+        else if (g_InputState->dragging)
         {
             int8           from_rank = g_InputState->drag_from_rank;
             int8           from_file = g_InputState->drag_from_file;
@@ -152,9 +167,14 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
             // correctly sign-extend coordinates that extend off the client area.
             int32 px = (int32)(int16)LOWORD(lparam);
             int32 py = (int32)(int16)HIWORD(lparam);
-            InputHandleDragStart(g_InputState, g_GameState,
-                                 px, py,
-                                 BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+            if (g_InputState->pending_promotion)
+                InputHandlePromotionClick(g_InputState, g_GameState,
+                                          px, py,
+                                          BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+            else
+                InputHandleDragStart(g_InputState, g_GameState,
+                                     px, py,
+                                     BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
         } return 0;
 
         case WM_MOUSEMOVE:

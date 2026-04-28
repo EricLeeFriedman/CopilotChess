@@ -337,8 +337,200 @@ static bool TestInput_CancelDrag_ClearsActiveDrag(void)
 }
 
 // ---------------------------------------------------------------------------
-// Test table and entry point
+// Promotion picker tests
 // ---------------------------------------------------------------------------
+
+// Helper: set up a GameState with only a White pawn at e7 (rank 6, file 4),
+// both kings still present, and a clear e8 so the pawn can promote.
+// White to move.
+static void SetupPromoPosition(GameState* gs)
+{
+    InitGameState(gs);
+    // Remove pawns from their starting squares (e2 and e7 in standard position).
+    gs->board.squares[1][4] = { PIECE_NONE, COLOR_NONE }; // clear e2 White pawn
+    gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE }; // put White pawn at e7
+    gs->board.squares[7][4] = { PIECE_NONE, COLOR_NONE }; // clear e8 (Black queen)
+}
+
+// Dragging a White pawn from e7 and dropping it on e8 must enter pending
+// promotion rather than immediately applying a move.
+// e7 center: sq_x=640, sq_y=120; center=(680,160)
+// e8 center: sq_x=640, sq_y=40;  center=(680,80)
+static bool TestInput_DragEnd_SetsPromotionPending(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80); // pick up e7
+    if (!input.dragging) return false;
+
+    bool moved = InputHandleDragEnd(&input, &gs, 680, 80, 320, 40, 80); // drop on e8
+
+    if (moved)                        return false; // no move yet
+    if (input.dragging)               return false; // drag ended
+    if (!input.pending_promotion)     return false;
+    if (input.promo_from_rank != 6)   return false;
+    if (input.promo_from_file != 4)   return false;
+    if (input.promo_to_rank   != 7)   return false;
+    if (input.promo_to_file   != 4)   return false;
+    // Board unchanged — pawn still at e7
+    if (gs.board.squares[6][4].piece != PIECE_PAWN) return false;
+    if (gs.board.squares[7][4].piece != PIECE_NONE) return false;
+    return true;
+}
+
+// Clicking rank 7, file 4 (index 0 = PIECE_QUEEN) during pending promotion
+// must apply a queen promotion.
+static bool TestInput_PromotionClick_AppliesQueen(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 80, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    // Click e8 (rank 7, file 4) — index 0 = Queen
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 80, 320, 40, 80);
+
+    if (!moved)                                       return false;
+    if (input.pending_promotion)                      return false; // cleared
+    if (gs.board.squares[7][4].piece != PIECE_QUEEN)  return false;
+    if (gs.board.squares[7][4].color != COLOR_WHITE)  return false;
+    if (gs.board.squares[6][4].piece != PIECE_NONE)   return false; // e7 empty
+    if (gs.side_to_move != COLOR_BLACK)               return false;
+    return true;
+}
+
+// Clicking rank 4, file 4 (index 3 = PIECE_KNIGHT) must apply a knight
+// underpromotion.
+// rank 4 center: sq_y = 40 + (7-4)*80 = 280 + 40 = 320; center=(680,320)
+static bool TestInput_PromotionClick_AppliesKnight(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 80, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    // Click rank 4, file 4 — index 3 = Knight
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 320, 320, 40, 80);
+
+    if (!moved)                                        return false;
+    if (input.pending_promotion)                       return false;
+    if (gs.board.squares[7][4].piece != PIECE_KNIGHT)  return false;
+    if (gs.board.squares[7][4].color != COLOR_WHITE)   return false;
+    return true;
+}
+
+// Clicking outside the picker column (wrong file) must cancel the pending
+// promotion without applying any move.
+// d4 (rank 3, file 3) is outside the picker (file 4).
+// d4 center: sq_x=320+3*80=560, sq_y=40+(7-3)*80=360; center=(600,400)
+static bool TestInput_PromotionClick_CancelsOnWrongFile(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 80, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    bool moved = InputHandlePromotionClick(&input, &gs, 600, 400, 320, 40, 80);
+
+    if (moved)                        return false;
+    if (input.pending_promotion)      return false; // cancelled
+    if (gs.board.squares[6][4].piece != PIECE_PAWN) return false; // board unchanged
+    return true;
+}
+
+// Clicking below the picker range (rank 3 for White, same file) must cancel.
+// rank 3, file 4 center: sq_y=40+(7-3)*80=360; center=(680,400)
+static bool TestInput_PromotionClick_CancelsOnOutsideRange(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 80, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    // Rank 3 at file 4 — for White, idx = 7-3 = 4 which is out of [0,4)
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 400, 320, 40, 80);
+
+    if (moved)               return false;
+    if (input.pending_promotion) return false; // cancelled
+    return true;
+}
+
+// Clicking outside the board during a pending promotion must cancel.
+static bool TestInput_PromotionClick_CancelsOutsideBoard(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragEnd(&input, &gs, 680, 80, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    bool moved = InputHandlePromotionClick(&input, &gs, 10, 10, 320, 40, 80);
+
+    if (moved)               return false;
+    if (input.pending_promotion) return false;
+    return true;
+}
+
+// InputHandlePromotionClick when not in pending_promotion state must be a
+// safe no-op returning false.
+static bool TestInput_PromotionClick_NoOpWhenNotPending(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    bool moved = InputHandlePromotionClick(&input, &gs, 680, 80, 320, 40, 80);
+
+    if (moved)               return false;
+    if (input.pending_promotion) return false;
+    return true;
+}
+
+
 
 static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_PixelToSquare_A1_Corner),
@@ -359,6 +551,13 @@ static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_DragEnd_CancelsOutsideBoard),
     TEST_ENTRY(TestInput_DragEnd_NoOpWhenNotDragging),
     TEST_ENTRY(TestInput_CancelDrag_ClearsActiveDrag),
+    TEST_ENTRY(TestInput_DragEnd_SetsPromotionPending),
+    TEST_ENTRY(TestInput_PromotionClick_AppliesQueen),
+    TEST_ENTRY(TestInput_PromotionClick_AppliesKnight),
+    TEST_ENTRY(TestInput_PromotionClick_CancelsOnWrongFile),
+    TEST_ENTRY(TestInput_PromotionClick_CancelsOnOutsideRange),
+    TEST_ENTRY(TestInput_PromotionClick_CancelsOutsideBoard),
+    TEST_ENTRY(TestInput_PromotionClick_NoOpWhenNotPending),
 };
 
 void RunInputTests(AppMemory* memory, int32* passed, int32* total)

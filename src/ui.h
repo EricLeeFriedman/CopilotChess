@@ -31,3 +31,16 @@ void DrawPieceAt(RendererState* rs,
                  int32          center_x,
                  int32          center_y,
                  int32          sq_size);
+
+// Draw the promotion piece picker over the board.
+// Renders four highlighted squares (Queen, Rook, Bishop, Knight in that order)
+// at the promoting side's target file, starting from the promotion rank and
+// descending (White) or ascending (Black) toward the board centre.
+// Call after DrawBoard when InputState::pending_promotion is true.
+void DrawPromotionPicker(RendererState*   rs,
+                         int32            board_x,
+                         int32            board_y,
+                         int32            square_size,
+                         int8             to_rank,
+                         int8             to_file,
+                         Color            promoting_side);

@@ -203,7 +203,10 @@ The input subsystem is implemented in `src/input.h` and `src/input.cpp`.
 | `dragging` | `bool` | `true` while the left button is held and a piece is being dragged |
 | `drag_from_rank` / `drag_from_file` | `int8` | Source square of the dragged piece; both are `-1` when not dragging |
 | `drag_cursor_x` / `drag_cursor_y` | `int32` | Current cursor pixel position; updated every `WM_MOUSEMOVE` |
-| `legal_moves` | `MoveList` | Legal moves originating from the drag-source square; pre-computed at drag start |
+| `legal_moves` | `MoveList` | Legal moves originating from the drag-source square; pre-computed at drag start; kept alive during `pending_promotion` for use by `InputHandlePromotionClick` |
+| `pending_promotion` | `bool` | `true` after a pawn drop on the last rank, while waiting for the player to choose a promotion piece |
+| `promo_from_rank` / `promo_from_file` | `int8` | Source square of the pawn awaiting promotion |
+| `promo_to_rank` / `promo_to_file` | `int8` | Target square on the promotion rank |
 
 #### Coordinate Mapping
 
@@ -215,15 +218,28 @@ The drag state machine spans three Win32 messages:
 
 | Message | Function | Behaviour |
 |---|---|---|
-| `WM_LBUTTONDOWN` | `InputHandleDragStart` | If the clicked square contains a piece belonging to the current player, begin drag and cache legal moves; otherwise no-op |
+| `WM_LBUTTONDOWN` | `InputHandleDragStart` (normal) or `InputHandlePromotionClick` (when `pending_promotion`) | Picks up piece if it belongs to the current player, or resolves the promotion picker |
 | `WM_MOUSEMOVE` | `InputHandleDragMove` | Update `drag_cursor_x/y`; no-op when not dragging |
-| `WM_LBUTTONUP` | `InputHandleDragEnd` | Drop the piece: apply the move if the drop square is a legal target, otherwise cancel the drag; returns `true` on a successful move |
+| `WM_LBUTTONUP` | `InputHandleDragEnd` | Drop the piece: apply the move if legal and non-promotion; enter `pending_promotion` if the drop is on a promotion rank; otherwise cancel the drag |
 
-`InputCancelDrag(input)` resets all drag state immediately (called on `WM_RBUTTONDOWN` or missed button-up recovery).
+#### Promotion Picker
 
-`InputInit(input)` initialises the struct to "not dragging" at startup.
+When `InputHandleDragEnd` detects that the drop target is a pawn-promotion square, it does not apply a move immediately.  Instead it sets `pending_promotion = true` and preserves `legal_moves` (which contains all four promotion variants) for use by `InputHandlePromotionClick`.
 
-For pawn promotions the move with `PIECE_QUEEN` is automatically preferred (auto-queen).
+`InputHandlePromotionClick` maps the next `WM_LBUTTONDOWN` pixel to a picker slot:
+
+| Promoting side | Slot 0 (rank) | Slot 1 | Slot 2 | Slot 3 |
+|---|---|---|---|---|
+| White | rank 7 — Queen | rank 6 — Rook | rank 5 — Bishop | rank 4 — Knight |
+| Black | rank 0 — Queen | rank 1 — Rook | rank 2 — Bishop | rank 3 — Knight |
+
+A click outside the picker column or below/above the four slots cancels the pending promotion without changing the board.
+
+`InputCancelDrag(input)` resets all drag and pending-promotion state immediately (called on `WM_RBUTTONDOWN` or missed button-up recovery).
+
+`InputInit(input)` initialises the struct to "not dragging, no pending promotion" at startup.
+
+`DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` renders the four picker squares over the board using a golden highlight (`BOARD_PROMO_PICK`) with the corresponding piece icon drawn inside each square.  `DrawBoard` is called first with `hide_rank/hide_file` pointing at the source pawn so the board appears without the moving pawn while the picker is visible.
 
 #### Win32 Integration
 
@@ -255,6 +271,8 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 | King | Rectangle body + prominent cross on top |
 
 `DrawPieceAt(rs, type, color, center_x, center_y, sq_size)` renders a single piece centered at an arbitrary pixel position.  Called by the render loop to draw the floating piece under the cursor during a drag.
+
+`DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` overlays four golden-highlighted squares at the promotion file (Queen, Rook, Bishop, Knight in slot order) so the player can click to choose a promotion piece.
 
 The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 
