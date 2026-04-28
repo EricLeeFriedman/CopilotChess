@@ -130,6 +130,16 @@ Own legal move generation, check detection, checkmate detection, and any support
 5. If the move is a double pawn push, sets the en passant target to the skipped square.
 6. Advances `side_to_move`.
 
+#### Check Detection
+
+`IsInCheck(const Board*, Color)` returns `true` if the king of the given color is attacked by any enemy piece on the current board.
+
+- Scans the board to locate the king for `color`.
+- Builds a temporary `GameState` with the enemy as `side_to_move`.
+- Calls all five pseudo-legal move generators (`GeneratePawnMoves`, `GenerateKnightMoves`, `GenerateRookMoves`, `GenerateBishopMoves`, `GenerateQueenMoves`) to enumerate every square the enemy can attack.
+- Returns `true` if any generated move lands on the king's square.
+- Efficient enough to call repeatedly during legal move filtering (no dynamic allocation; uses stack-local `GameState` and `MoveList`).
+
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.

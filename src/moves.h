@@ -66,3 +66,8 @@ void GenerateQueenMoves(const GameState* gs, MoveList* list);
 
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);
+
+// Returns true if the king of 'color' is attacked by any enemy piece on 'board'.
+// Uses the existing move generators to enumerate all enemy pseudo-legal attacks.
+// Efficient enough to call repeatedly (e.g., during legal move filtering).
+bool IsInCheck(const Board* board, Color color);
