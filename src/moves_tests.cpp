@@ -1394,12 +1394,11 @@ static bool TestCastling_RightsLostAfterRookCaptured(void)
 }
 
 // ---------------------------------------------------------------------------
-// Regression: kingside castling is legal when an enemy pawn is directly in
-// front of the transit square (f1) but does not attack it diagonally.
-// A black pawn on f2 (rank 1, file 5) attacks e1 and g1 — NOT f1.
-// So castling through f1 should still be legal.
+// Regression: kingside castling is illegal when a black pawn on f2 attacks
+// both the king's starting square (e1) and its destination (g1) diagonally.
+// This verifies pawn attacks are detected correctly (diagonal only).
 // ---------------------------------------------------------------------------
-static bool TestCastling_KingsideLegalWithPawnInFrontOfTransit(void)
+static bool TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd(void)
 {
     Arena*     arena = &s_Memory->test_scratch;
     ArenaReset(arena);
@@ -1413,15 +1412,42 @@ static bool TestCastling_KingsideLegalWithPawnInFrontOfTransit(void)
 
     gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
     gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
-    // Black pawn on f2 (rank 1, file 5) — in front of the f1 transit square but
-    // does NOT attack f1 diagonally; it attacks e1 and g1.
+    // Black pawn on f2 (rank 1, file 5): diagonally attacks e1 (king start) and g1
+    // (king destination). Kingside castling must be rejected.
     gs->board.squares[1][5] = { PIECE_PAWN, COLOR_BLACK };
 
     MoveList legal = {};
     GetLegalMoves(gs, &legal);
 
-    // Kingside castling must still appear because f1 is not attacked by the pawn.
-    if (!FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    // Kingside castling must NOT appear — pawn attacks both e1 and g1.
+    if (FindCastlingMove(&legal, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Regression: a pawn directly in front of the king (on the same file) does
+// NOT put the king in check. Only diagonal pawn attacks count.
+// A black pawn on e5 pushes toward e4 but only attacks d4 and f4 diagonally.
+// ---------------------------------------------------------------------------
+static bool TestIsInCheck_PawnDirectlyInFrontIsNotCheck(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White king on e4 (rank 3, file 4); black pawn directly in front on e5
+    // (rank 4, file 4). The pawn's forward push targets e4, but it ATTACKS
+    // d4 and f4 only — NOT e4. So the king must NOT be in check.
+    gs->board.squares[3][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[4][4] = { PIECE_PAWN, COLOR_BLACK };
+
+    if (IsInCheck(&gs->board, COLOR_WHITE)) return false;
     return true;
 }
 
@@ -1518,7 +1544,8 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestCastling_RightsLostAfterKingMove);
     RUN_TEST(TestCastling_RightsLostAfterRookMove);
     RUN_TEST(TestCastling_RightsLostAfterRookCaptured);
-    RUN_TEST(TestCastling_KingsideLegalWithPawnInFrontOfTransit);
+    RUN_TEST(TestCastling_KingsideIllegalWhenPawnAttacksStartAndEnd);
+    RUN_TEST(TestIsInCheck_PawnDirectlyInFrontIsNotCheck);
     RUN_TEST(TestCastling_NormalKingMoveDoesNotMovRook);
 
     return true;
