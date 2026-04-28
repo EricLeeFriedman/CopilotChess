@@ -245,6 +245,8 @@ A click outside the picker column or below/above the four slots cancels the pend
 
 All three drag messages are handled in `WindowProc`; pixel coordinates are read from `lparam` via signed 16-bit casts (`(int16)LOWORD(lparam)`) to correctly handle coordinates that extend off the client area.
 
+`SetCapture(window)` is called immediately after a successful drag start (i.e., when `g_InputState->dragging` is `true` after `InputHandleDragStart`) so that the window continues to receive `WM_MOUSEMOVE` and `WM_LBUTTONUP` even when the cursor leaves the client area.  `ReleaseCapture()` is called on every `WM_LBUTTONUP` and `WM_RBUTTONDOWN` handler, regardless of whether a drag was active.  A `WM_CAPTURECHANGED` handler calls `InputCancelDrag` to recover if the OS revokes capture externally (e.g. an `Alt+Tab` or a modal dialog appears while the button is held down).
+
 The board layout constants (`BOARD_X = 320`, `BOARD_Y = 40`, `BOARD_SQUARE_SIZE = 80`) are defined as file-scope `static const int32` in `src/main.cpp` and shared between the render loop and `WindowProc`.
 
 ### User Interface

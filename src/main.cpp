@@ -172,9 +172,15 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
                                           px, py,
                                           BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
             else
+            {
                 InputHandleDragStart(g_InputState, g_GameState,
                                      px, py,
                                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+                // Capture the mouse so WM_LBUTTONUP is received even if the
+                // button is released outside the client area.
+                if (g_InputState->dragging)
+                    SetCapture(window);
+            }
         } return 0;
 
         case WM_MOUSEMOVE:
@@ -191,10 +197,19 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
             InputHandleDragEnd(g_InputState, g_GameState,
                                px, py,
                                BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+            ReleaseCapture();
         } return 0;
 
         case WM_RBUTTONDOWN:
         {
+            InputCancelDrag(g_InputState);
+            ReleaseCapture();
+        } return 0;
+
+        case WM_CAPTURECHANGED:
+        {
+            // The OS revoked mouse capture (e.g. Alt+Tab or a modal dialog).
+            // Cancel any active drag so the piece doesn't stay stuck floating.
             InputCancelDrag(g_InputState);
         } return 0;
     }

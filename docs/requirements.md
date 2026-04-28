@@ -12,7 +12,16 @@
 - Windows only.
 - 2D software rendering through the Windows API.
 - Mouse-only local play for two players on one machine.
-- Piece movement is click-and-drag.
+- Piece movement is click-and-drag:
+  - Left-button down on a piece belonging to the current player picks it up.
+  - Moving the mouse while holding the button drags the piece; legal-move targets are highlighted on the board.
+  - Left-button up drops the piece. If the drop square is a legal target the move is applied; otherwise the piece returns to its origin.
+  - Right-button cancels an in-progress drag and returns the piece to its origin.
+  - Mouse capture is set on drag start and released on drop or cancel so that button-up is received even when the cursor leaves the client area.
+- Pawn promotion:
+  - When a pawn is dropped on the last rank a promotion picker overlay appears at the promotion file showing Queen, Rook, Bishop, and Knight (in that order away from the promotion rank).
+  - Clicking one of the four picker squares applies the promotion with the chosen piece.
+  - Clicking outside the picker, or right-clicking, cancels the promotion and leaves the board unchanged.
 
 ## Build And Source Control
 
