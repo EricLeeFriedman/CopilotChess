@@ -115,9 +115,9 @@ static bool RunTests(void)
     RunMovesTests(&g_Memory,    &passed, &total);
     RunRendererTests(&g_Memory, &passed, &total);
 
-    char summary[64];
-    wsprintfA(summary, "%d/%d tests passed\n", passed, total);
-    OutputDebugStringA(summary);
+    uint8 summary[64];
+    wsprintfA((LPSTR)summary, "%d/%d tests passed\n", passed, total);
+    OutputDebugStringA((const char*)summary);
 
     return passed == total;
 }

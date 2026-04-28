@@ -5,13 +5,13 @@
 // A single test case: a human-readable name and a zero-argument function
 // that returns true on pass and false on fail.
 struct TestEntry {
-    const char* name;
+    const uint8* name;
     bool (*fn)(void);
 };
 
 // Convenience macro — avoids writing the name string and the function pointer
 // separately.  Usage: TEST_ENTRY(MyTestFunction)
-#define TEST_ENTRY(fn) { #fn, fn }
+#define TEST_ENTRY(fn) { (const uint8*)#fn, fn }
 
 // Iterates every entry in `tests[0..count)`, calls each function, prints
 // "PASS: <name>" or "FAIL: <name>" to the debug output, and accumulates
@@ -24,7 +24,7 @@ inline void RunTestArray(const TestEntry* tests, int32 count,
     {
         bool ok = tests[i].fn();
         OutputDebugStringA(ok ? "PASS: " : "FAIL: ");
-        OutputDebugStringA(tests[i].name);
+        OutputDebugStringA((const char*)tests[i].name);
         OutputDebugStringA("\n");
         if (ok) ++(*passed);
         ++(*total);
