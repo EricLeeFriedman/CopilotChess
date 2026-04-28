@@ -192,7 +192,7 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 ### Input
 
-Own click-to-move interaction state for both players.  No heap allocation; all state lives in the `input` arena.
+Own drag-and-drop piece movement state for both players.  No heap allocation; all state lives in the `input` arena.
 
 The input subsystem is implemented in `src/input.h` and `src/input.cpp`.
 
@@ -200,35 +200,34 @@ The input subsystem is implemented in `src/input.h` and `src/input.cpp`.
 
 | Field | Type | Purpose |
 |---|---|---|
-| `selected_rank` / `selected_file` | `int8` | Currently selected square; both are `-1` when nothing is selected |
-| `has_selection` | `bool` | `true` when a piece is selected |
-| `legal_moves` | `MoveList` | Legal moves originating from the selected square; pre-computed on selection |
+| `dragging` | `bool` | `true` while the left button is held and a piece is being dragged |
+| `drag_from_rank` / `drag_from_file` | `int8` | Source square of the dragged piece; both are `-1` when not dragging |
+| `drag_cursor_x` / `drag_cursor_y` | `int32` | Current cursor pixel position; updated every `WM_MOUSEMOVE` |
+| `legal_moves` | `MoveList` | Legal moves originating from the drag-source square; pre-computed at drag start |
 
 #### Coordinate Mapping
 
 `PixelToSquare(px, py, board_x, board_y, square_size, &rank, &file)` converts a window-client pixel to a board square.  Returns `false` when the pixel falls outside the 8×8 board area.  Rank 0 is White's back rank at the bottom of the screen; rank 7 is Black's back rank at the top.
 
-#### Click Handling
+#### Drag Handling
 
-`InputHandleLeftClick(input, gs, px, py, board_x, board_y, square_size)` implements the full click-to-move state machine:
+The drag state machine spans three Win32 messages:
 
-| Situation | Outcome |
-|---|---|
-| No selection + own piece clicked | Select the piece; cache its legal moves |
-| Selection present + legal destination clicked | Apply the move via `ApplyMove`; clear selection; returns `true` |
-| Selection present + own piece clicked | Re-select that piece |
-| Anything else (empty square or opponent piece that is not a legal capture target) | Clear selection |
-| Click outside the board area | Clear selection |
+| Message | Function | Behaviour |
+|---|---|---|
+| `WM_LBUTTONDOWN` | `InputHandleDragStart` | If the clicked square contains a piece belonging to the current player, begin drag and cache legal moves; otherwise no-op |
+| `WM_MOUSEMOVE` | `InputHandleDragMove` | Update `drag_cursor_x/y`; no-op when not dragging |
+| `WM_LBUTTONUP` | `InputHandleDragEnd` | Drop the piece: apply the move if the drop square is a legal target, otherwise cancel the drag; returns `true` on a successful move |
+
+`InputCancelDrag(input)` resets all drag state immediately (called on `WM_RBUTTONDOWN` or missed button-up recovery).
+
+`InputInit(input)` initialises the struct to "not dragging" at startup.
 
 For pawn promotions the move with `PIECE_QUEEN` is automatically preferred (auto-queen).
 
-`InputClearSelection(input)` resets the state to "no selection" (called on right-click or game reset).
-
-`InputInit(input)` initialises the struct to "no selection" at startup.
-
 #### Win32 Integration
 
-`WM_LBUTTONDOWN` is handled in `WindowProc`; pixel coordinates are read from `lparam` via signed 16-bit casts (`(int16)LOWORD(lparam)`) to correctly handle coordinates that extend off-screen.  `WM_RBUTTONDOWN` calls `InputClearSelection`.
+All three drag messages are handled in `WindowProc`; pixel coordinates are read from `lparam` via signed 16-bit casts (`(int16)LOWORD(lparam)`) to correctly handle coordinates that extend off the client area.
 
 The board layout constants (`BOARD_X = 320`, `BOARD_Y = 40`, `BOARD_SQUARE_SIZE = 80`) are defined as file-scope `static const int32` in `src/main.cpp` and shared between the render loop and `WindowProc`.
 
@@ -240,11 +239,11 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 
 #### Board Rendering
 
-`DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves)` draws the complete board view into the renderer's pixel buffer in two passes:
+`DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves, hide_rank, hide_file)` draws the complete board view into the renderer's pixel buffer in two passes:
 
 1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). Highlighted squares (selected piece and valid-move targets) are tinted green. Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
 
-2. **Piece pass** — calls `DrawPiece` for every non-empty square. Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
+2. **Piece pass** — calls the internal `DrawPiece` for every non-empty square, except the square identified by `hide_rank`/`hide_file` (used during drag so the piece renders only at the cursor rather than on the board). Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
 
 | Piece | Shape |
 |---|---|
@@ -254,6 +253,8 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 | Bishop | Ball on a narrow stem + flat base + tip orb |
 | Queen | Large circle body + three crown orbs |
 | King | Rectangle body + prominent cross on top |
+
+`DrawPieceAt(rs, type, color, center_x, center_y, sq_size)` renders a single piece centered at an arbitrary pixel position.  Called by the render loop to draw the floating piece under the cursor during a drag.
 
 The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 

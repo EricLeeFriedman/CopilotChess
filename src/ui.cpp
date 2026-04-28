@@ -236,7 +236,9 @@ void DrawBoard(RendererState*   rs,
                int32            square_size,
                int8             selected_rank,
                int8             selected_file,
-               const MoveList*  legal_moves)
+               const MoveList*  legal_moves,
+               int8             hide_rank,
+               int8             hide_file)
 {
     ASSERT(rs && gs);
 
@@ -300,6 +302,10 @@ void DrawBoard(RendererState*   rs,
     {
         for (int32 file = 0; file < 8; ++file)
         {
+            // Skip the square whose piece is being dragged — it will be drawn
+            // at the cursor position by the caller instead.
+            if (rank == hide_rank && file == hide_file) continue;
+
             const Square& sq = gs->board.squares[rank][file];
             if (sq.piece == PIECE_NONE) continue;
 
@@ -309,4 +315,22 @@ void DrawBoard(RendererState*   rs,
             DrawPiece(rs, sq_x, sq_y, square_size, sq.piece, sq.color);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public helper — floating piece during drag
+// ---------------------------------------------------------------------------
+
+void DrawPieceAt(RendererState* rs,
+                 PieceType      type,
+                 Color          piece_color,
+                 int32          center_x,
+                 int32          center_y,
+                 int32          sq_size)
+{
+    // DrawPiece expects the top-left corner of the square, so back-compute
+    // it from the desired center.
+    int32 sq_x = center_x - sq_size / 2;
+    int32 sq_y = center_y - sq_size / 2;
+    DrawPiece(rs, sq_x, sq_y, sq_size, type, piece_color);
 }

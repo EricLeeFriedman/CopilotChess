@@ -106,14 +106,30 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
 
-        int8            sel_rank  = g_InputState->has_selection ? g_InputState->selected_rank : (int8)-1;
-        int8            sel_file  = g_InputState->has_selection ? g_InputState->selected_file : (int8)-1;
-        const MoveList* sel_moves = g_InputState->has_selection ? &g_InputState->legal_moves  : nullptr;
+        if (g_InputState->dragging)
+        {
+            int8           from_rank = g_InputState->drag_from_rank;
+            int8           from_file = g_InputState->drag_from_file;
+            const Square&  dragged   = g_GameState->board.squares[from_rank][from_file];
 
-        DrawBoard(&g_Renderer, g_GameState,
-                  BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
-                  sel_rank, sel_file,
-                  sel_moves);
+            // Highlight the source square and show legal-move dots; hide the
+            // piece there so it renders only at the cursor (floating).
+            DrawBoard(&g_Renderer, g_GameState,
+                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                      from_rank, from_file,
+                      &g_InputState->legal_moves,
+                      from_rank, from_file);
+
+            DrawPieceAt(&g_Renderer, dragged.piece, dragged.color,
+                        g_InputState->drag_cursor_x, g_InputState->drag_cursor_y,
+                        BOARD_SQUARE_SIZE);
+        }
+        else
+        {
+            DrawBoard(&g_Renderer, g_GameState,
+                      BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                      -1, -1, nullptr);
+        }
 
         PresentFrame(&g_Renderer, window);
     }
@@ -136,14 +152,30 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
             // correctly sign-extend coordinates that extend off the client area.
             int32 px = (int32)(int16)LOWORD(lparam);
             int32 py = (int32)(int16)HIWORD(lparam);
-            InputHandleLeftClick(g_InputState, g_GameState,
+            InputHandleDragStart(g_InputState, g_GameState,
                                  px, py,
                                  BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
         } return 0;
 
+        case WM_MOUSEMOVE:
+        {
+            int32 px = (int32)(int16)LOWORD(lparam);
+            int32 py = (int32)(int16)HIWORD(lparam);
+            InputHandleDragMove(g_InputState, px, py);
+        } return 0;
+
+        case WM_LBUTTONUP:
+        {
+            int32 px = (int32)(int16)LOWORD(lparam);
+            int32 py = (int32)(int16)HIWORD(lparam);
+            InputHandleDragEnd(g_InputState, g_GameState,
+                               px, py,
+                               BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+        } return 0;
+
         case WM_RBUTTONDOWN:
         {
-            InputClearSelection(g_InputState);
+            InputCancelDrag(g_InputState);
         } return 0;
     }
 

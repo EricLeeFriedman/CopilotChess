@@ -70,52 +70,54 @@ static bool TestInput_PixelToSquare_H1_LastPixel(void)
 }
 
 // ---------------------------------------------------------------------------
-// InputInit / InputClearSelection tests
+// InputInit / InputCancelDrag tests
 // ---------------------------------------------------------------------------
 
 static bool TestInput_InitClearsState(void)
 {
     InputState input;
     // Dirty the struct first.
-    input.selected_rank = 3;
-    input.selected_file = 4;
-    input.has_selection = true;
+    input.dragging       = true;
+    input.drag_from_rank = 3;
+    input.drag_from_file = 4;
+    input.drag_cursor_x  = 500;
+    input.drag_cursor_y  = 400;
 
     InputInit(&input);
 
-    if (input.has_selection)        return false;
-    if (input.selected_rank != -1)  return false;
-    if (input.selected_file != -1)  return false;
+    if (input.dragging)              return false;
+    if (input.drag_from_rank != -1)  return false;
+    if (input.drag_from_file != -1)  return false;
     if (input.legal_moves.count != 0) return false;
     return true;
 }
 
-static bool TestInput_ClearSelectionResetsState(void)
+static bool TestInput_CancelDragResetsState(void)
 {
     InputState input = {};
-    input.selected_rank = 2;
-    input.selected_file = 3;
-    input.has_selection = true;
+    input.dragging       = true;
+    input.drag_from_rank = 2;
+    input.drag_from_file = 3;
     input.legal_moves.count = 5; // fake count
 
-    InputClearSelection(&input);
+    InputCancelDrag(&input);
 
-    if (input.has_selection)         return false;
-    if (input.selected_rank != -1)   return false;
-    if (input.selected_file != -1)   return false;
+    if (input.dragging)               return false;
+    if (input.drag_from_rank != -1)   return false;
+    if (input.drag_from_file != -1)   return false;
     if (input.legal_moves.count != 0) return false;
     return true;
 }
 
 // ---------------------------------------------------------------------------
-// InputHandleLeftClick tests
+// InputHandleDragStart tests
 // ---------------------------------------------------------------------------
 
-// Clicking on a White pawn at e2 (rank 1, file 4) with no selection should
-// select it and populate legal_moves.
+// Clicking on a White pawn at e2 (rank 1, file 4) should start a drag and
+// populate legal_moves.
 // Board layout: board_x=320, board_y=40, square_size=80.
 // e2 screen center: sq_x=320+4*80=640, sq_y=40+(7-1)*80=520; center=(680,560).
-static bool TestInput_LeftClick_SelectsOwnPiece(void)
+static bool TestInput_DragStart_PicksUpOwnPiece(void)
 {
     ArenaReset(&s_Memory->test_scratch);
 
@@ -125,20 +127,19 @@ static bool TestInput_LeftClick_SelectsOwnPiece(void)
     InputState input = {};
     InputInit(&input);
 
-    bool moved = InputHandleLeftClick(&input, &gs, 680, 560, 320, 40, 80);
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80);
 
-    if (moved)                    return false; // no move yet
-    if (!input.has_selection)     return false;
-    if (input.selected_rank != 1) return false;
-    if (input.selected_file != 4) return false;
+    if (!input.dragging)              return false;
+    if (input.drag_from_rank != 1)    return false;
+    if (input.drag_from_file != 4)    return false;
     if (input.legal_moves.count == 0) return false; // e2-e3 and e2-e4 at minimum
     return true;
 }
 
-// Clicking on a Black piece (rank 6, file 4 = e7) with no selection and
-// White to move should NOT select anything.
+// Clicking on a Black piece (rank 6, file 4 = e7) with White to move should
+// NOT start a drag.
 // e7 center: sq_x=320+4*80=640, sq_y=40+(7-6)*80=120; center=(680,160).
-static bool TestInput_LeftClick_DoesNotSelectOpponentPiece(void)
+static bool TestInput_DragStart_IgnoresOpponentPiece(void)
 {
     ArenaReset(&s_Memory->test_scratch);
 
@@ -148,17 +149,91 @@ static bool TestInput_LeftClick_DoesNotSelectOpponentPiece(void)
     InputState input = {};
     InputInit(&input);
 
-    bool moved = InputHandleLeftClick(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
 
-    if (moved)                return false;
-    if (input.has_selection)  return false;
+    if (input.dragging) return false;
     return true;
 }
 
-// Click on e2, then click on e4 — a legal double-pawn push for White.
-// After the move the side to move is Black and the input is cleared.
-// e4: sq_x=320+4*80=640, sq_y=40+(7-3)*80=360; center=(680,400).
-static bool TestInput_LeftClick_AppliesLegalMove(void)
+// Clicking on an empty square should NOT start a drag.
+// e4 (rank 3, file 4) is empty at game start.
+// e4 center: sq_x=320+4*80=640, sq_y=40+(7-3)*80=360; center=(680,400).
+static bool TestInput_DragStart_IgnoresEmptySquare(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 400, 320, 40, 80);
+
+    if (input.dragging) return false;
+    return true;
+}
+
+// Clicking outside the board entirely should NOT start a drag.
+static bool TestInput_DragStart_IgnoresOutsideBoard(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 10, 10, 320, 40, 80);
+
+    if (input.dragging) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// InputHandleDragMove tests
+// ---------------------------------------------------------------------------
+
+// After starting a drag, DragMove should update the cursor coordinates.
+static bool TestInput_DragMove_UpdatesCursor(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80); // pick up e2
+    InputHandleDragMove(&input, 700, 400);
+
+    if (!input.dragging)           return false;
+    if (input.drag_cursor_x != 700) return false;
+    if (input.drag_cursor_y != 400) return false;
+    return true;
+}
+
+// DragMove while not dragging is a safe no-op.
+static bool TestInput_DragMove_NoOpWhenNotDragging(void)
+{
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragMove(&input, 500, 500); // must not crash or set dragging
+
+    if (input.dragging) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// InputHandleDragEnd tests
+// ---------------------------------------------------------------------------
+
+// Drop on a legal target (e4) after picking up e2 should apply the move.
+// e4: sq_y=40+(7-3)*80=360, center=(680,400).
+static bool TestInput_DragEnd_AppliesLegalMove(void)
 {
     ArenaReset(&s_Memory->test_scratch);
 
@@ -168,32 +243,21 @@ static bool TestInput_LeftClick_AppliesLegalMove(void)
     InputState input = {};
     InputInit(&input);
 
-    // Select e2.
-    InputHandleLeftClick(&input, &gs, 680, 560, 320, 40, 80);
-    if (!input.has_selection) return false;
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80); // pick up e2
+    bool moved = InputHandleDragEnd(&input, &gs, 680, 400, 320, 40, 80); // drop on e4
 
-    // Move to e4.
-    bool moved = InputHandleLeftClick(&input, &gs, 680, 400, 320, 40, 80);
-
-    if (!moved)              return false;
-    if (input.has_selection) return false; // cleared after move
-
-    // The piece should now be on e4 (rank 3, file 4).
-    if (gs.board.squares[3][4].piece != PIECE_PAWN) return false;
-    if (gs.board.squares[3][4].color != COLOR_WHITE) return false;
-
-    // e2 must be empty.
-    if (gs.board.squares[1][4].piece != PIECE_NONE) return false;
-
-    // Side to move must now be Black.
-    if (gs.side_to_move != COLOR_BLACK) return false;
-
+    if (!moved)                                        return false;
+    if (input.dragging)                                return false; // cleared after move
+    if (gs.board.squares[3][4].piece != PIECE_PAWN)   return false; // pawn on e4
+    if (gs.board.squares[3][4].color != COLOR_WHITE)   return false;
+    if (gs.board.squares[1][4].piece != PIECE_NONE)   return false; // e2 is empty
+    if (gs.side_to_move != COLOR_BLACK)                return false; // turn advanced
     return true;
 }
 
-// Click on e2 (select), then click on e5 (illegal) — selection should stay.
-// e5: sq_x=320+4*80=640, sq_y=40+(7-4)*80=280; center=(680,320).
-static bool TestInput_LeftClick_IllegalMoveKeepsSelection(void)
+// Drop on an illegal target (e5) cancels the drag without changing the board.
+// e5 (rank 4): sq_y=40+(7-4)*80=280, center=(680,320).
+static bool TestInput_DragEnd_CancelsOnIllegalTarget(void)
 {
     ArenaReset(&s_Memory->test_scratch);
 
@@ -203,22 +267,18 @@ static bool TestInput_LeftClick_IllegalMoveKeepsSelection(void)
     InputState input = {};
     InputInit(&input);
 
-    // Select e2.
-    InputHandleLeftClick(&input, &gs, 680, 560, 320, 40, 80);
-    if (!input.has_selection) return false;
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80); // pick up e2
+    bool moved = InputHandleDragEnd(&input, &gs, 680, 320, 320, 40, 80); // drop on e5
 
-    // Click e5 — not reachable from e2 in one pawn move.
-    bool moved = InputHandleLeftClick(&input, &gs, 680, 320, 320, 40, 80);
-
-    // No move should be applied; selection cleared (empty non-target square).
-    if (moved) return false;
-    // The board must be unchanged (e2 still has the white pawn).
-    if (gs.board.squares[1][4].piece != PIECE_PAWN) return false;
+    if (moved)                                        return false;
+    if (input.dragging)                               return false; // drag cancelled
+    if (gs.board.squares[1][4].piece != PIECE_PAWN)  return false; // board unchanged
+    if (gs.side_to_move != COLOR_WHITE)               return false; // turn unchanged
     return true;
 }
 
-// Right-click clears selection: select e2 then call InputClearSelection.
-static bool TestInput_RightClick_ClearsSelection(void)
+// Drop outside the board cancels the drag.
+static bool TestInput_DragEnd_CancelsOutsideBoard(void)
 {
     ArenaReset(&s_Memory->test_scratch);
 
@@ -228,65 +288,51 @@ static bool TestInput_RightClick_ClearsSelection(void)
     InputState input = {};
     InputInit(&input);
 
-    // Select e2.
-    InputHandleLeftClick(&input, &gs, 680, 560, 320, 40, 80);
-    if (!input.has_selection) return false;
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80); // pick up e2
+    bool moved = InputHandleDragEnd(&input, &gs, 10, 10, 320, 40, 80); // outside board
 
-    // Simulate right-click.
-    InputClearSelection(&input);
+    if (moved)          return false;
+    if (input.dragging) return false;
+    return true;
+}
 
-    if (input.has_selection)        return false;
-    if (input.selected_rank != -1)  return false;
+// DragEnd when not dragging is a safe no-op returning false.
+static bool TestInput_DragEnd_NoOpWhenNotDragging(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    bool moved = InputHandleDragEnd(&input, &gs, 680, 400, 320, 40, 80);
+
+    if (moved)          return false;
+    if (input.dragging) return false;
+    return true;
+}
+
+// InputCancelDrag during an active drag clears drag state.
+static bool TestInput_CancelDrag_ClearsActiveDrag(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80); // pick up e2
+    if (!input.dragging) return false;
+
+    InputCancelDrag(&input);
+
+    if (input.dragging)               return false;
+    if (input.drag_from_rank != -1)   return false;
     if (input.legal_moves.count != 0) return false;
-    return true;
-}
-
-// Select e2, then click d2 (another White pawn) — should re-select d2.
-// d2: rank 1, file 3; center=(320+3*80+40, 40+(7-1)*80+40)=(600,560).
-static bool TestInput_LeftClick_ReselectsOwnPiece(void)
-{
-    ArenaReset(&s_Memory->test_scratch);
-
-    GameState gs = {};
-    InitGameState(&gs);
-
-    InputState input = {};
-    InputInit(&input);
-
-    // Select e2.
-    InputHandleLeftClick(&input, &gs, 680, 560, 320, 40, 80);
-    if (!input.has_selection)     return false;
-    if (input.selected_file != 4) return false;
-
-    // Click d2 (file 3).
-    InputHandleLeftClick(&input, &gs, 600, 560, 320, 40, 80);
-
-    if (!input.has_selection)     return false;
-    if (input.selected_rank != 1) return false;
-    if (input.selected_file != 3) return false;
-    if (input.legal_moves.count == 0) return false;
-    return true;
-}
-
-// Click outside the board should clear any existing selection.
-static bool TestInput_LeftClick_OutsideBoardClearsSelection(void)
-{
-    ArenaReset(&s_Memory->test_scratch);
-
-    GameState gs = {};
-    InitGameState(&gs);
-
-    InputState input = {};
-    InputInit(&input);
-
-    // Select e2.
-    InputHandleLeftClick(&input, &gs, 680, 560, 320, 40, 80);
-    if (!input.has_selection) return false;
-
-    // Click outside the board (x=10, y=10 is far from the board area).
-    InputHandleLeftClick(&input, &gs, 10, 10, 320, 40, 80);
-
-    if (input.has_selection) return false;
     return true;
 }
 
@@ -301,14 +347,18 @@ static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_PixelToSquare_OutsideBottom),
     TEST_ENTRY(TestInput_PixelToSquare_H1_LastPixel),
     TEST_ENTRY(TestInput_InitClearsState),
-    TEST_ENTRY(TestInput_ClearSelectionResetsState),
-    TEST_ENTRY(TestInput_LeftClick_SelectsOwnPiece),
-    TEST_ENTRY(TestInput_LeftClick_DoesNotSelectOpponentPiece),
-    TEST_ENTRY(TestInput_LeftClick_AppliesLegalMove),
-    TEST_ENTRY(TestInput_LeftClick_IllegalMoveKeepsSelection),
-    TEST_ENTRY(TestInput_RightClick_ClearsSelection),
-    TEST_ENTRY(TestInput_LeftClick_ReselectsOwnPiece),
-    TEST_ENTRY(TestInput_LeftClick_OutsideBoardClearsSelection),
+    TEST_ENTRY(TestInput_CancelDragResetsState),
+    TEST_ENTRY(TestInput_DragStart_PicksUpOwnPiece),
+    TEST_ENTRY(TestInput_DragStart_IgnoresOpponentPiece),
+    TEST_ENTRY(TestInput_DragStart_IgnoresEmptySquare),
+    TEST_ENTRY(TestInput_DragStart_IgnoresOutsideBoard),
+    TEST_ENTRY(TestInput_DragMove_UpdatesCursor),
+    TEST_ENTRY(TestInput_DragMove_NoOpWhenNotDragging),
+    TEST_ENTRY(TestInput_DragEnd_AppliesLegalMove),
+    TEST_ENTRY(TestInput_DragEnd_CancelsOnIllegalTarget),
+    TEST_ENTRY(TestInput_DragEnd_CancelsOutsideBoard),
+    TEST_ENTRY(TestInput_DragEnd_NoOpWhenNotDragging),
+    TEST_ENTRY(TestInput_CancelDrag_ClearsActiveDrag),
 };
 
 void RunInputTests(AppMemory* memory, int32* passed, int32* total)
