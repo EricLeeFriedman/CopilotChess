@@ -97,3 +97,19 @@ bool IsInCheck(const Board* board, Color color);
 // to the candidate list).
 // Does not clear out->count before appending.
 void GetLegalMoves(const GameState* gs, MoveList* out);
+
+// Result of evaluating a position.
+enum GameResult
+{
+    GAME_ONGOING,      // At least one legal move remains; game continues.
+    GAME_WHITE_WINS,   // Black has no legal moves and is in check (checkmate).
+    GAME_BLACK_WINS,   // White has no legal moves and is in check (checkmate).
+    GAME_DRAW,         // The side to move has no legal moves and is not in check (stalemate).
+};
+
+// Evaluate the position in 'gs' and return the game result.
+// Checks whether gs->side_to_move has any legal moves.
+//   - No legal moves + king in check  => checkmate (opponent wins).
+//   - No legal moves + king not in check => stalemate (draw).
+//   - Legal moves available => ongoing.
+GameResult EvaluatePosition(const GameState* gs);

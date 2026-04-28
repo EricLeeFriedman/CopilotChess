@@ -171,6 +171,24 @@ Own legal move generation, check detection, checkmate detection, and any support
 - Handles all pinned-piece cases, king-into-check cases, and castling naturally through the apply-and-test approach.
 - No dynamic allocation; all temporaries are stack-local.
 
+#### Position Evaluation
+
+`EvaluatePosition(const GameState*)` determines the end-of-game result after each move:
+
+- Calls `GetLegalMoves` for `gs->side_to_move`.
+- If the side to move has at least one legal move, returns `GAME_ONGOING`.
+- If there are no legal moves and the side to move is in check (`IsInCheck` returns `true`), returns checkmate: `GAME_BLACK_WINS` when White is mated, `GAME_WHITE_WINS` when Black is mated.
+- If there are no legal moves and the king is **not** in check, returns `GAME_DRAW` (stalemate).
+
+`GameResult` is an enum declared in `src/moves.h`:
+
+| Value | Meaning |
+|---|---|
+| `GAME_ONGOING` | At least one legal move remains; game continues. |
+| `GAME_WHITE_WINS` | Black is in checkmate (no legal moves, king in check). |
+| `GAME_BLACK_WINS` | White is in checkmate (no legal moves, king in check). |
+| `GAME_DRAW` | The side to move has no legal moves and is not in check (stalemate). |
+
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.
