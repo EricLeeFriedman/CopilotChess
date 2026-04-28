@@ -78,8 +78,13 @@ void GenerateQueenMoves(const GameState* gs, MoveList* list);
 void GenerateKingMoves(const GameState* gs, MoveList* list);
 
 // Return true if (rank, file) is attacked by any piece of by_color.
+// exclude_rank/exclude_file: treat this square as empty during ray-casting
+// (pass the king's origin so its presence doesn't shield destination squares
+// from sliding-piece attacks along the same ray).
+// Pass -1/-1 to disable exclusion.
 // Used internally for castling validation and exposed for check detection.
-bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color);
+bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color,
+                      int8 exclude_rank = -1, int8 exclude_file = -1);
 
 // Apply a move to the game state: update board, en passant target, and side_to_move.
 void ApplyMove(GameState* gs, const Move* move);

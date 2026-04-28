@@ -941,6 +941,76 @@ static bool FindCastlingMove(const MoveList* list, int8 fr, int8 ff, int8 tr, in
 }
 
 // ---------------------------------------------------------------------------
+// King cannot move into a square attacked via X-ray through its own origin.
+// White king on e1 (0,4); black rook on c1 (0,2) — the rook's eastward ray
+// is blocked by the king at e1, but f1 (0,5) is on that ray past e1.
+// The king must not be allowed to step to f1.
+// ---------------------------------------------------------------------------
+static bool TestKing_CannotMoveToXRayAttackedSquare(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // King on e1, black rook on c1.  The rook's east ray is: c1 → d1 → (e1 skipped
+    // after king moves) → f1.  Without the fix the king would shield f1; with it f1
+    // is correctly identified as attacked.
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][2] = { PIECE_ROOK, COLOR_BLACK };
+    gs->castling_wk = false;
+    gs->castling_wq = false;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // d1 (0,3) is directly attacked by the rook — must not be in list.
+    if ( FindMove(&list, 0, 4, 0, 3)) return false;
+    // f1 (0,5) is attacked via x-ray through e1 — must not be in list.
+    if ( FindMove(&list, 0, 4, 0, 5)) return false;
+    // d2 (1,3) and f2 (1,5) are not on the rook's ray — should be reachable.
+    if (!FindMove(&list, 0, 4, 1, 3)) return false;
+    if (!FindMove(&list, 0, 4, 1, 5)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Castling blocked by X-ray attack on transit square through king's origin.
+// White king on e1 (0,4), white rook h1 (0,7), black rook b1 (0,1).
+// The black rook's eastward ray passes through the vacated e1 to reach f1,
+// so kingside castling must be refused.
+// ---------------------------------------------------------------------------
+static bool TestCastling_XRayBlocksTransit(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE };
+    gs->board.squares[0][7] = { PIECE_ROOK, COLOR_WHITE };
+    gs->board.squares[0][1] = { PIECE_ROOK, COLOR_BLACK }; // b1: attacks e1 ray east
+    gs->castling_wk = true;
+
+    MoveList list = {};
+    GenerateKingMoves(gs, &list);
+
+    // f1 (0,5) is the transit square — attacked via x-ray; castling must be refused.
+    if (FindCastlingMove(&list, 0, 4, 0, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // White kingside castling — all conditions met.
 // ---------------------------------------------------------------------------
 static bool TestCastling_WhiteKingside(void)
@@ -1305,6 +1375,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestKing_NoFriendlyCapture);
     RUN_TEST(TestKing_EnemyCapture);
     RUN_TEST(TestKing_CannotMoveIntoAttackedSquare);
+    RUN_TEST(TestKing_CannotMoveToXRayAttackedSquare);
 
     RUN_TEST(TestCastling_WhiteKingside);
     RUN_TEST(TestCastling_WhiteQueenside);
@@ -1313,6 +1384,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestCastling_ThroughAttackedSquare);
     RUN_TEST(TestCastling_LandingSquareAttacked);
     RUN_TEST(TestCastling_NoRight);
+    RUN_TEST(TestCastling_XRayBlocksTransit);
     RUN_TEST(TestCastling_ApplyKingside);
     RUN_TEST(TestCastling_ApplyQueenside);
     RUN_TEST(TestCastling_RightsRevokedByKingMove);

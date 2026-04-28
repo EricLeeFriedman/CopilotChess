@@ -312,7 +312,8 @@ void GenerateQueenMoves(const GameState* gs, MoveList* list)
 // IsSquareAttacked: returns true if 'rank'/'file' is attacked by any piece
 // of 'by_color'. Checks pawns, knights, sliding pieces, and the enemy king.
 // ---------------------------------------------------------------------------
-bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color)
+bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color,
+                      int8 exclude_rank, int8 exclude_file)
 {
     ASSERT(board);
 
@@ -367,6 +368,12 @@ bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color)
         int8 f = (int8)(file + k_ortho[d][1]);
         while (r >= 0 && r < 8 && f >= 0 && f < 8)
         {
+            if (r == exclude_rank && f == exclude_file)
+            {
+                r = (int8)(r + k_ortho[d][0]);
+                f = (int8)(f + k_ortho[d][1]);
+                continue;
+            }
             const Square sq = board->squares[r][f];
             if (sq.piece != PIECE_NONE)
             {
@@ -392,6 +399,12 @@ bool IsSquareAttacked(const Board* board, int8 rank, int8 file, Color by_color)
         int8 f = (int8)(file + k_diag[d][1]);
         while (r >= 0 && r < 8 && f >= 0 && f < 8)
         {
+            if (r == exclude_rank && f == exclude_file)
+            {
+                r = (int8)(r + k_diag[d][0]);
+                f = (int8)(f + k_diag[d][1]);
+                continue;
+            }
             const Square sq = board->squares[r][f];
             if (sq.piece != PIECE_NONE)
             {
@@ -474,7 +487,7 @@ void GenerateKingMoves(const GameState* gs, MoveList* list)
 
         const Square target = board->squares[tr][tf];
         if (target.piece != PIECE_NONE && target.color == color) continue;
-        if (IsSquareAttacked(board, tr, tf, enemy)) continue;
+        if (IsSquareAttacked(board, tr, tf, enemy, king_rank, king_file)) continue;
 
         ASSERT(list->count < MAX_MOVES_PER_POSITION);
         Move& m         = list->moves[list->count++];
@@ -496,9 +509,9 @@ void GenerateKingMoves(const GameState* gs, MoveList* list)
     if (ks_right &&
         board->squares[home_rank][5].piece == PIECE_NONE &&
         board->squares[home_rank][6].piece == PIECE_NONE &&
-        !IsSquareAttacked(board, home_rank, 4, enemy) &&
-        !IsSquareAttacked(board, home_rank, 5, enemy) &&
-        !IsSquareAttacked(board, home_rank, 6, enemy))
+        !IsSquareAttacked(board, home_rank, 4, enemy, king_rank, king_file) &&
+        !IsSquareAttacked(board, home_rank, 5, enemy, king_rank, king_file) &&
+        !IsSquareAttacked(board, home_rank, 6, enemy, king_rank, king_file))
     {
         ASSERT(list->count < MAX_MOVES_PER_POSITION);
         Move& m         = list->moves[list->count++];
@@ -517,9 +530,9 @@ void GenerateKingMoves(const GameState* gs, MoveList* list)
         board->squares[home_rank][1].piece == PIECE_NONE &&
         board->squares[home_rank][2].piece == PIECE_NONE &&
         board->squares[home_rank][3].piece == PIECE_NONE &&
-        !IsSquareAttacked(board, home_rank, 4, enemy) &&
-        !IsSquareAttacked(board, home_rank, 3, enemy) &&
-        !IsSquareAttacked(board, home_rank, 2, enemy))
+        !IsSquareAttacked(board, home_rank, 4, enemy, king_rank, king_file) &&
+        !IsSquareAttacked(board, home_rank, 3, enemy, king_rank, king_file) &&
+        !IsSquareAttacked(board, home_rank, 2, enemy, king_rank, king_file))
     {
         ASSERT(list->count < MAX_MOVES_PER_POSITION);
         Move& m         = list->moves[list->count++];
