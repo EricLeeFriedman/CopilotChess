@@ -1549,6 +1549,48 @@ static bool TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Regression: GetLegalMoves must never return a move that captures the
+// opponent's king.  King capture is not a legal chess move; such positions
+// must be handled through check/checkmate detection before they arise.
+//
+// Setup:
+//   White queen on d1, Black king on d8, White king on e1.
+//   White is to move.  The queen can pseudo-legally slide to d8 and "capture"
+//   the Black king, but GetLegalMoves must not include that move.
+// ---------------------------------------------------------------------------
+static bool TestGetLegalMoves_CannotCaptureKing(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[0][3] = { PIECE_QUEEN, COLOR_WHITE }; // d1
+    gs->board.squares[0][4] = { PIECE_KING,  COLOR_WHITE }; // e1
+    gs->board.squares[7][3] = { PIECE_KING,  COLOR_BLACK }; // d8 — would be "captured"
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // d1 -> d8 must not be present.
+    for (int32 i = 0; i < legal.count; ++i)
+    {
+        const Move& m = legal.moves[i];
+        if (m.from_rank == 0 && m.from_file == 3 &&
+            m.to_rank   == 7 && m.to_file   == 3)
+        {
+            return false; // king capture must be absent
+        }
+    }
+    return true;
+}
+
 bool RunMovesTests(AppMemory* memory)
 {
     ASSERT(memory);
@@ -1596,6 +1638,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestGetLegalMoves_KingCannotWalkIntoCheck);
     RUN_TEST(TestGetLegalMoves_PinnedKnightHasNoMoves);
     RUN_TEST(TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep);
+    RUN_TEST(TestGetLegalMoves_CannotCaptureKing);
 
     RUN_TEST(TestCastling_WhiteKingsideAvailable);
     RUN_TEST(TestCastling_WhiteQueensideAvailable);

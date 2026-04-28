@@ -629,15 +629,23 @@ void GetLegalMoves(const GameState* gs, MoveList* out)
 
     const Color color = gs->side_to_move;
 
-    // Keep only moves that do not leave the moving side's king in check.
+    // Keep only moves that do not leave the moving side's king in check,
+    // and that do not capture the opponent's king (king capture is never
+    // legal in standard chess; those positions must be handled via check/
+    // checkmate detection before they arise).
     for (int32 i = 0; i < candidates.count; ++i)
     {
+        const Move& m = candidates.moves[i];
+        const Square& dest = gs->board.squares[m.to_rank][m.to_file];
+        if (dest.piece == PIECE_KING)
+            continue;
+
         GameState temp = *gs;
-        ApplyMove(&temp, &candidates.moves[i]);
+        ApplyMove(&temp, &m);
         if (!IsInCheck(&temp.board, color))
         {
             ASSERT(out->count < MAX_MOVES_PER_POSITION);
-            out->moves[out->count++] = candidates.moves[i];
+            out->moves[out->count++] = m;
         }
     }
 }

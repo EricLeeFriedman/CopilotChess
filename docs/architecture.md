@@ -166,7 +166,8 @@ Own legal move generation, check detection, checkmate detection, and any support
 `GetLegalMoves(const GameState*, MoveList*)` appends all **fully legal** moves for `gs->side_to_move`:
 
 - Generates all pseudo-legal candidate moves by calling `GeneratePawnMoves`, `GenerateKnightMoves`, `GenerateRookMoves`, `GenerateBishopMoves`, `GenerateQueenMoves`, `GenerateKingMoves`, and `GenerateCastlingMoves`.
-- For each candidate move, applies the move to a stack-local copy of the `GameState`, calls `IsInCheck` on the resulting board for the moving side, and discards the move if the king is in check.
+- Skips any candidate whose destination square contains `PIECE_KING` — king capture is never legal in standard chess and must not appear in the output.
+- For each remaining candidate move, applies the move to a stack-local copy of the `GameState`, calls `IsInCheck` on the resulting board for the moving side, and discards the move if the king is in check.
 - Handles all pinned-piece cases, king-into-check cases, and castling naturally through the apply-and-test approach.
 - No dynamic allocation; all temporaries are stack-local.
 
