@@ -2,8 +2,10 @@
 #include <windows.h>
 
 #include "memory.h"
+#include "renderer.h"
 
-static AppMemory g_Memory;
+static AppMemory    g_Memory;
+static RendererState g_Renderer;
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 static bool RunTests(void);
@@ -53,6 +55,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         return 1;
     }
 
+    if (!RendererInit(&g_Renderer, &g_Memory.renderer, 1280, 720))
+    {
+        MessageBoxA(0, "Failed to initialize renderer.", "Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
     ShowWindow(window, showCode);
 
     bool running = true;
@@ -69,7 +77,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
             DispatchMessage(&message);
         }
 
-        // TODO: update and render
+        if (!running) break;
+
+        Pixel bg = { 40, 40, 40, 0 };
+        ClearBuffer(&g_Renderer, bg);
+        PresentFrame(&g_Renderer, window);
     }
 
     return 0;
@@ -91,12 +103,14 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
 bool RunMemoryTests(AppMemory* memory);
 bool RunBoardTests(AppMemory* memory);
 bool RunMovesTests(AppMemory* memory);
+bool RunRendererTests(AppMemory* memory);
 
 static bool RunTests(void)
 {
-    if (!RunMemoryTests(&g_Memory)) return false;
-    if (!RunBoardTests(&g_Memory))  return false;
-    if (!RunMovesTests(&g_Memory))  return false;
+    if (!RunMemoryTests(&g_Memory))   return false;
+    if (!RunBoardTests(&g_Memory))    return false;
+    if (!RunMovesTests(&g_Memory))    return false;
+    if (!RunRendererTests(&g_Memory)) return false;
     return true;
 }
 
