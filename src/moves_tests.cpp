@@ -1489,22 +1489,20 @@ static bool TestCastling_NormalKingMoveDoesNotMovRook(void)
 }
 
 // ---------------------------------------------------------------------------
-// Regression: an absolutely pinned enemy knight must NOT be counted as
-// attacking a square it cannot legally reach.
+// Regression: an absolutely pinned enemy knight still attacks squares it
+// cannot legally move to.  Per FIDE Article 3.8, a piece attacks its normal
+// squares even when constrained from moving there by an absolute pin.
 //
 // Setup:
 //   White king on e1 (rank 0, file 4), White rook on d1 (rank 0, file 3).
 //   Black knight on d4 (rank 3, file 3), Black king on d8 (rank 7, file 3).
 //
 // The Black knight is absolutely pinned along the d-file (White rook on d1
-// would attack Black king on d8 if the knight moved off d3). The knight
-// pseudo-legally attacks e2 (rank 1, file 4), but that capture is illegal.
-//
-// With the fix, the White king must be allowed to step to e2.
-// Without the fix (pseudo-legal attack detection), the king step was
-// incorrectly rejected.
+// would attack Black king on d8 if the knight left d4).  The knight attacks
+// e2 (rank 1, file 4); under FIDE rules that square is controlled, so the
+// White king must NOT be allowed to step there.
 // ---------------------------------------------------------------------------
-static bool TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep(void)
+static bool TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep(void)
 {
     Arena*     arena = &s_Memory->test_scratch;
     ArenaReset(arena);
@@ -1521,15 +1519,11 @@ static bool TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep(void)
     gs->board.squares[3][3] = { PIECE_KNIGHT, COLOR_BLACK }; // d4 — absolutely pinned
     gs->board.squares[7][3] = { PIECE_KING,   COLOR_BLACK }; // d8
 
-    // Black knight on d4 pseudo-legally attacks e2 (rank 1, file 4).
-    // Verify the pin by confirming the knight DOES pseudo-attack e2.
-    // Then verify the White king CAN still step to e2 legally.
-
+    // The pinned black knight on d4 attacks e2 (rank 1, file 4) per FIDE rules.
+    // GetLegalMoves must NOT include the king step e1 -> e2.
     MoveList legal = {};
     GetLegalMoves(gs, &legal);
 
-    // Find a king step from e1 (0,4) to e2 (1,4).
-    bool found_e2 = false;
     for (int32 i = 0; i < legal.count; ++i)
     {
         const Move& m = legal.moves[i];
@@ -1537,15 +1531,11 @@ static bool TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep(void)
             m.to_rank   == 1 && m.to_file   == 4 &&
             !m.is_castling)
         {
-            found_e2 = true;
-            break;
+            return false; // king step to e2 must be absent
         }
     }
-    if (!found_e2) return false;
 
-    // The pinned Black knight must NOT be reported as checking after the king
-    // moves to e2 either — the step was already included in legal moves, but
-    // double-check IsInCheck directly on the post-move board.
+    // Also verify IsInCheck correctly reports check after a king move to e2.
     GameState after = *gs;
     Move km          = {};
     km.from_rank     = 0; km.from_file = 4;
@@ -1554,7 +1544,7 @@ static bool TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep(void)
     km.is_en_passant = false;
     km.is_castling   = false;
     ApplyMove(&after, &km);
-    if (IsInCheck(&after.board, COLOR_WHITE)) return false;
+    if (!IsInCheck(&after.board, COLOR_WHITE)) return false; // must be in check
 
     return true;
 }
@@ -1605,7 +1595,7 @@ bool RunMovesTests(AppMemory* memory)
     RUN_TEST(TestGetLegalMoves_PinnedRook);
     RUN_TEST(TestGetLegalMoves_KingCannotWalkIntoCheck);
     RUN_TEST(TestGetLegalMoves_PinnedKnightHasNoMoves);
-    RUN_TEST(TestGetLegalMoves_PinnedEnemyKnightDoesNotBlockKingStep);
+    RUN_TEST(TestGetLegalMoves_PinnedEnemyKnightStillBlocksKingStep);
 
     RUN_TEST(TestCastling_WhiteKingsideAvailable);
     RUN_TEST(TestCastling_WhiteQueensideAvailable);

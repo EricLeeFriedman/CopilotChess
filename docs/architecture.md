@@ -135,19 +135,12 @@ Own legal move generation, check detection, checkmate detection, and any support
 
 #### Check Detection
 
-`IsInCheck(const Board*, Color)` returns `true` if the king of the given color is genuinely attacked by any enemy piece (accounting for pins) on the current board.
+`IsInCheck(const Board*, Color)` returns `true` if the king of the given color is attacked by any enemy piece on the current board.
 
 - Scans the board to locate the king for `color`.
 - Delegates to `IsSquareAttackedBy` for the king's square and the enemy color.
 
-`IsSquareAttackedBy(const Board*, int8 rank, int8 file, Color attacker)` is the pin-aware attack helper. Pawn attacks are detected with a direct diagonal scan. For all other piece types it:
-
-- Generates pseudo-legal moves for the `attacker` side (knight, rook, bishop, queen, king generators).
-- For each pseudo-legal move that reaches `(rank, file)`, simulates the capture on a stack-local board copy.
-- Calls `IsSquareAttackedByPseudo` to check whether the attacker's own king would be exposed in the resulting position.
-- Returns `true` only for captures that do **not** expose the attacker's king (i.e., the attacker piece is not absolutely pinned).
-
-`IsSquareAttackedByPseudo(const Board*, int8 rank, int8 file, Color attacker)` is a fast pseudo-legal helper used **only** inside `IsSquareAttackedBy` for the inner pin-verification step. It does not filter pinned pieces and must not be called for other purposes.
+`IsSquareAttackedBy(const Board*, int8 rank, int8 file, Color attacker)` returns `true` if any piece of `attacker` can pseudo-legally reach `(rank, file)`. Pawn attacks use direct diagonal detection only (no forward pushes). All other pieces are checked via the knight/rook/bishop/queen/king move generators. Pinned pieces are **not** filtered — per FIDE Article 3.8 a piece attacks its normal squares even when constrained from moving there by an absolute pin; this ensures correct check detection, king-move validation, and castling safety.
 - Efficient enough to call repeatedly during legal move filtering (no dynamic allocation; uses stack-local `GameState` and `MoveList`).
 
 #### King Move Generation
