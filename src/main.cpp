@@ -4,11 +4,19 @@
 #include "memory.h"
 #include "renderer.h"
 #include "moves.h"
+#include "input.h"
 #include "ui.h"
 
 static AppMemory     g_Memory;
 static RendererState g_Renderer;
 static GameState*    g_GameState;
+static InputState*   g_InputState;
+
+// Board layout constants — shared between the render loop and WindowProc.
+static const int32 BOARD_SQUARE_SIZE = 80;
+static const int32 BOARD_PX          = BOARD_SQUARE_SIZE * 8; // 640
+static const int32 BOARD_X           = (1280 - BOARD_PX) / 2; // 320
+static const int32 BOARD_Y           = (720  - BOARD_PX) / 2; // 40
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 static bool RunTests(void);
@@ -74,6 +82,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
     g_GameState = ArenaPushType(&g_Memory.game_state, GameState);
     InitGameState(g_GameState);
 
+    g_InputState = ArenaPushType(&g_Memory.input, InputState);
+    InputInit(g_InputState);
+
     ShowWindow(window, showCode);
 
     bool running = true;
@@ -95,16 +106,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
 
-        // Board: 640x640, centered in the 1280x720 window
-        static const int32 SQUARE_SIZE = 80;
-        static const int32 BOARD_PX    = SQUARE_SIZE * 8; // 640
-        int32 board_x = (1280 - BOARD_PX) / 2;           // 320
-        int32 board_y = (720  - BOARD_PX) / 2;           // 40
+        int8            sel_rank  = g_InputState->has_selection ? g_InputState->selected_rank : (int8)-1;
+        int8            sel_file  = g_InputState->has_selection ? g_InputState->selected_file : (int8)-1;
+        const MoveList* sel_moves = g_InputState->has_selection ? &g_InputState->legal_moves  : nullptr;
 
         DrawBoard(&g_Renderer, g_GameState,
-                  board_x, board_y, SQUARE_SIZE,
-                  -1, -1,   // no selection
-                  nullptr); // no legal moves
+                  BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE,
+                  sel_rank, sel_file,
+                  sel_moves);
 
         PresentFrame(&g_Renderer, window);
     }
@@ -120,6 +129,22 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
         {
             PostQuitMessage(0);
         } return 0;
+
+        case WM_LBUTTONDOWN:
+        {
+            // LOWORD/HIWORD give unsigned 16-bit values; cast via int16 to
+            // correctly sign-extend coordinates that extend off the client area.
+            int32 px = (int32)(int16)LOWORD(lparam);
+            int32 py = (int32)(int16)HIWORD(lparam);
+            InputHandleLeftClick(g_InputState, g_GameState,
+                                 px, py,
+                                 BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+        } return 0;
+
+        case WM_RBUTTONDOWN:
+        {
+            InputClearSelection(g_InputState);
+        } return 0;
     }
 
     return DefWindowProc(window, message, wparam, lparam);
@@ -130,6 +155,7 @@ void RunBoardTests(AppMemory* memory, int32* passed, int32* total);
 void RunMovesTests(AppMemory* memory, int32* passed, int32* total);
 void RunRendererTests(AppMemory* memory, int32* passed, int32* total);
 void RunUITests(AppMemory* memory, int32* passed, int32* total);
+void RunInputTests(AppMemory* memory, int32* passed, int32* total);
 
 static bool RunTests(void)
 {
@@ -141,6 +167,7 @@ static bool RunTests(void)
     RunMovesTests(&g_Memory,    &passed, &total);
     RunRendererTests(&g_Memory, &passed, &total);
     RunUITests(&g_Memory,       &passed, &total);
+    RunInputTests(&g_Memory,    &passed, &total);
 
     uint8 summary[64];
     wsprintfA((LPSTR)summary, "%d/%d tests passed\n", passed, total);

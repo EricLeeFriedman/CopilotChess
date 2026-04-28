@@ -190,6 +190,48 @@ Own legal move generation, check detection, checkmate detection, and any support
 | `GAME_BLACK_WINS` | White is in checkmate (no legal moves, king in check). |
 | `GAME_DRAW` | The side to move has no legal moves and is not in check (stalemate). |
 
+### Input
+
+Own click-to-move interaction state for both players.  No heap allocation; all state lives in the `input` arena.
+
+The input subsystem is implemented in `src/input.h` and `src/input.cpp`.
+
+#### InputState
+
+| Field | Type | Purpose |
+|---|---|---|
+| `selected_rank` / `selected_file` | `int8` | Currently selected square; both are `-1` when nothing is selected |
+| `has_selection` | `bool` | `true` when a piece is selected |
+| `legal_moves` | `MoveList` | Legal moves originating from the selected square; pre-computed on selection |
+
+#### Coordinate Mapping
+
+`PixelToSquare(px, py, board_x, board_y, square_size, &rank, &file)` converts a window-client pixel to a board square.  Returns `false` when the pixel falls outside the 8×8 board area.  Rank 0 is White's back rank at the bottom of the screen; rank 7 is Black's back rank at the top.
+
+#### Click Handling
+
+`InputHandleLeftClick(input, gs, px, py, board_x, board_y, square_size)` implements the full click-to-move state machine:
+
+| Situation | Outcome |
+|---|---|
+| No selection + own piece clicked | Select the piece; cache its legal moves |
+| Selection present + legal destination clicked | Apply the move via `ApplyMove`; clear selection; returns `true` |
+| Selection present + own piece clicked | Re-select that piece |
+| Anything else (empty square or opponent piece that is not a legal capture target) | Clear selection |
+| Click outside the board area | Clear selection |
+
+For pawn promotions the move with `PIECE_QUEEN` is automatically preferred (auto-queen).
+
+`InputClearSelection(input)` resets the state to "no selection" (called on right-click or game reset).
+
+`InputInit(input)` initialises the struct to "no selection" at startup.
+
+#### Win32 Integration
+
+`WM_LBUTTONDOWN` is handled in `WindowProc`; pixel coordinates are read from `lparam` via signed 16-bit casts (`(int16)LOWORD(lparam)`) to correctly handle coordinates that extend off-screen.  `WM_RBUTTONDOWN` calls `InputClearSelection`.
+
+The board layout constants (`BOARD_X = 320`, `BOARD_Y = 40`, `BOARD_SQUARE_SIZE = 80`) are defined as file-scope `static const int32` in `src/main.cpp` and shared between the render loop and `WindowProc`.
+
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.
