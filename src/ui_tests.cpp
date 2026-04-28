@@ -95,15 +95,15 @@ static bool TestUI_DrawBoard_LegalMoveDotOnTargetOnly(void)
     // y = (7 - 2) * 80 + 40 = 440; x = 4 * 80 + 40 = 360.
     Pixel target_px = rs.pixels[(int32)440 * rs.width + (int32)360];
 
-    // The target must be highlighted (the selection tint or move-dot color).
-    Pixel light_sq = { 181, 217, 240, 0 };
-    Pixel dark_sq  = {  99, 136, 181, 0 };
-    if (PixelEq(target_px, light_sq)) return false;
-    if (PixelEq(target_px, dark_sq))  return false;
+    // The center of an empty target square is overwritten by the move-dot circle,
+    // so it must be exactly BOARD_MOVE_DOT.
+    Pixel move_dot = { 64, 111, 100, 0 };  // BOARD_MOVE_DOT (BGRA)
+    if (!PixelEq(target_px, move_dot)) return false;
 
     // A non-target square (rank 4, file 0 — a4) must keep its plain board color.
     // y = (7 - 4) * 80 + 40 = 280; x = 0 * 80 + 40 = 40.
     // rank 4 + file 0 = 4 (even) → dark square.
+    Pixel dark_sq = { 99, 136, 181, 0 };
     Pixel non_target_px = rs.pixels[(int32)280 * rs.width + (int32)40];
     if (!PixelEq(non_target_px, dark_sq)) return false;
 
