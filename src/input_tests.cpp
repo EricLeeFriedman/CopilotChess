@@ -340,16 +340,23 @@ static bool TestInput_CancelDrag_ClearsActiveDrag(void)
 // Promotion picker tests
 // ---------------------------------------------------------------------------
 
-// Helper: set up a GameState with only a White pawn at e7 (rank 6, file 4),
-// both kings still present, and a clear e8 so the pawn can promote.
-// White to move.
+// Helper: set up a GameState with a White pawn at e7 (rank 6, file 4), both
+// kings present, and a clear e8 so the pawn can promote.  White to move.
+// e8 (rank 7, file 4) is the Black king's starting square, so we relocate
+// the Black king to h5 (rank 4, file 7 — empty in the starting position)
+// before clearing e8, keeping the board legal.
 static void SetupPromoPosition(GameState* gs)
 {
     InitGameState(gs);
-    // Remove pawns from their starting squares (e2 and e7 in standard position).
+    // Move White pawn from e2 to e7 (one step from promotion on e8).
     gs->board.squares[1][4] = { PIECE_NONE, COLOR_NONE }; // clear e2 White pawn
-    gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE }; // put White pawn at e7
-    gs->board.squares[7][4] = { PIECE_NONE, COLOR_NONE }; // clear e8 (Black queen)
+    gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE }; // White pawn at e7 (overwrites Black pawn)
+    // Relocate the Black king from e8 to h5 so e8 is open for promotion.
+    gs->board.squares[7][4] = { PIECE_NONE, COLOR_NONE }; // clear e8 (was Black king)
+    gs->board.squares[4][7] = { PIECE_KING, COLOR_BLACK }; // Black king to h5
+    // Disable Black castling — king is no longer on its start square.
+    gs->castling_black_kingside  = false;
+    gs->castling_black_queenside = false;
 }
 
 // Dragging a White pawn from e7 and dropping it on e8 must enter pending
