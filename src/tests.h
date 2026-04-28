@@ -17,10 +17,10 @@ struct TestEntry {
 // "PASS: <name>" or "FAIL: <name>" to the debug output, and accumulates
 // results into *passed and *total.  All tests are always executed; nothing
 // short-circuits on failure.
-inline void RunTestArray(const TestEntry* tests, int32 count,
+inline void RunTestArray(const TestEntry* tests, uint64 count,
                          int32* passed, int32* total)
 {
-    for (int32 i = 0; i < count; ++i)
+    for (uint64 i = 0; i < count; ++i)
     {
         bool ok = tests[i].fn();
         OutputDebugStringA(ok ? "PASS: " : "FAIL: ");
