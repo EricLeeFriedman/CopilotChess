@@ -13,13 +13,13 @@ static AppMemory* s_Memory;
 // Helpers
 // ---------------------------------------------------------------------------
 
-static RendererState MakeRenderer(int32 w, int32 h)
+// Initialises a renderer into *rs from the test_scratch arena.
+// Returns false (allowing the calling test to return false) when the arena is
+// exhausted — graceful failure rather than an ASSERT crash.
+static bool MakeRenderer(int32 w, int32 h, RendererState* rs)
 {
     Arena* arena = &s_Memory->test_scratch;
-    RendererState rs = {};
-    bool ok = RendererInit(&rs, arena, w, h);
-    ASSERT(ok);
-    return rs;
+    return RendererInit(rs, arena, w, h);
 }
 
 static bool PixelEq(Pixel a, Pixel b)
@@ -35,7 +35,8 @@ static bool PixelEq(Pixel a, Pixel b)
 static bool TestUI_DrawBoard_NoCrash(void)
 {
     ArenaReset(&s_Memory->test_scratch);
-    RendererState rs = MakeRenderer(640, 640);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
 
     GameState gs = {};
     InitGameState(&gs);
@@ -45,12 +46,13 @@ static bool TestUI_DrawBoard_NoCrash(void)
     return true;
 }
 
-// The center of the selected square must differ from the unlit square color.
+// The center of the selected square must be exactly BOARD_SELECTED.
 // Use an empty square (e4, rank 3 / file 4) so no piece overwrites the result.
 static bool TestUI_DrawBoard_SelectedSquareIsHighlighted(void)
 {
     ArenaReset(&s_Memory->test_scratch);
-    RendererState rs = MakeRenderer(640, 640);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
 
     GameState gs = {};
     InitGameState(&gs);
@@ -75,7 +77,8 @@ static bool TestUI_DrawBoard_SelectedSquareIsHighlighted(void)
 static bool TestUI_DrawBoard_LegalMoveDotOnTargetOnly(void)
 {
     ArenaReset(&s_Memory->test_scratch);
-    RendererState rs = MakeRenderer(640, 640);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
 
     GameState gs = {};
     InitGameState(&gs);
