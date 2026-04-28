@@ -17,13 +17,14 @@ static RendererState MakeRenderer(int32 w, int32 h)
 {
     Arena* arena = &s_Memory->test_scratch;
     RendererState rs = {};
-    RendererInit(&rs, arena, w, h);
+    bool ok = RendererInit(&rs, arena, w, h);
+    ASSERT(ok);
     return rs;
 }
 
 static bool PixelEq(Pixel a, Pixel b)
 {
-    return a.r == b.r && a.g == b.g && a.b == b.b;
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,15 +59,14 @@ static bool TestUI_DrawBoard_SelectedSquareIsHighlighted(void)
     // square_size=80, board at (0,0).
     // sq_y = (7 - 3) * 80 = 320; sq_x = 4 * 80 = 320.
     // Centre pixel: (320+40, 320+40) = (360, 360).
-    // rank 3 + file 4 = 7 (odd) → light square; BOARD_LIGHT = {181,217,240,0} BGRA.
     DrawBoard(&rs, &gs, 0, 0, 80, 3, 4, nullptr);
 
     Pixel center_px = rs.pixels[(int32)360 * rs.width + (int32)360];
 
-    // If selection highlighting is applied the center pixel will be BOARD_SELECTED
-    // ({105,151,130,0}), not the unlit light color.
-    Pixel light_sq = { 181, 217, 240, 0 };
-    if (PixelEq(center_px, light_sq)) return false;
+    // The center must be exactly BOARD_SELECTED; any other value means
+    // selection highlighting is broken (or color parity regressed).
+    Pixel selected = { 105, 151, 130, 0 };  // BOARD_SELECTED (BGRA)
+    if (!PixelEq(center_px, selected)) return false;
 
     return true;
 }
