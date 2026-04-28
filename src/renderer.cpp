@@ -68,6 +68,23 @@ void DrawRect(RendererState* rs, int32 x, int32 y, int32 w, int32 h, Pixel color
     }
 }
 
+void DrawFilledCircle(RendererState* rs, int32 cx, int32 cy, int32 radius, Pixel color)
+{
+    ASSERT(rs && rs->pixels);
+    if (radius <= 0) return;
+
+    int32 r2 = radius * radius;
+    for (int32 dy = -radius; dy <= radius; ++dy)
+    {
+        // Find the half-width at this row using integer arithmetic only.
+        // Increment dx while (dx+1)^2 + dy^2 <= r^2
+        int32 dx = 0;
+        while ((dx + 1) * (dx + 1) + dy * dy <= r2)
+            ++dx;
+        DrawRect(rs, cx - dx, cy + dy, dx * 2 + 1, 1, color);
+    }
+}
+
 void PresentFrame(RendererState* rs, HWND window)
 {
     ASSERT(rs && rs->pixels);

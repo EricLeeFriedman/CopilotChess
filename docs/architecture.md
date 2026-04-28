@@ -51,6 +51,7 @@ The public API:
 | `RendererInit(rs, arena, w, h)` | Push the pixel buffer from the arena, fill `bmi` |
 | `ClearBuffer(rs, color)` | Fill every pixel with a solid `Pixel` colour |
 | `DrawRect(rs, x, y, w, h, color)` | Fill an axis-aligned rectangle; silently clips to buffer bounds |
+| `DrawFilledCircle(rs, cx, cy, radius, color)` | Fill a circle using integer-only midpoint arithmetic; silently clips to buffer bounds |
 | `PresentFrame(rs, window)` | Call `StretchDIBits` to blit the pixel buffer to the window client area |
 
 `PresentFrame` acquires the DC with `GetDC`/`ReleaseDC` each frame — no per-frame GDI objects are allocated. The pixel format is BGRA with 32 bits per pixel and a top-down row order (negative `biHeight`).
@@ -192,6 +193,27 @@ Own legal move generation, check detection, checkmate detection, and any support
 ### User Interface
 
 Own board presentation, drag-and-drop interaction state, move feedback, and visible status messages such as check or checkmate.
+
+The UI is implemented in `src/ui.h` and `src/ui.cpp`.
+
+#### Board Rendering
+
+`DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves)` draws the complete board view into the renderer's pixel buffer in two passes:
+
+1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). Highlighted squares (selected piece and valid-move targets) are tinted green. Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
+
+2. **Piece pass** — calls `DrawPiece` for every non-empty square. Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
+
+| Piece | Shape |
+|---|---|
+| Pawn | Circle head + flat base |
+| Rook | Rectangle tower with three battlements |
+| Knight | Asymmetric staircase (body + offset head + snout) |
+| Bishop | Ball on a narrow stem + flat base + tip orb |
+| Queen | Large circle body + three crown orbs |
+| King | Rectangle body + prominent cross on top |
+
+The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 
 ### In-Application Tests
 
