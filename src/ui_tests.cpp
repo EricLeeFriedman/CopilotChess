@@ -280,9 +280,17 @@ static bool TestUI_CheckmateOverlay_BannerVisible(void)
     return true;
 }
 
-// After a stalemate position (GAME_DRAW), DrawStatusOverlay must paint the banner.
+// After a stalemate position (GAME_DRAW), DrawStatusOverlay must paint the banner
+// and render the "STALEMATE - DRAW" message, not a checkmate message.
 // White: King c6, Queen b6.  Black: King a8.  Side to move: BLACK.
 // Black has no legal moves and is not in check → GAME_DRAW.
+//
+// Banner geometry with board_x=0, board_y=0, square_size=80:
+//   board_px=640, banner_h=33, banner_y=303, text_y=309.
+//   "STALEMATE - DRAW" (16 chars): text_w=288, text_x=176.
+//   First glyph 'S' row 3 (mask=14=0b01110): col 1 is SET.
+//   First glyph 'C' row 3 (mask=16=0b10000): col 1 is NOT SET.
+//   → text pixel (179, 318) = STATUS_TEXT_COLOR proves stalemate message, not checkmate.
 static bool TestUI_StalemateOverlay_BannerVisible(void)
 {
     ArenaReset(&s_Memory->test_scratch);
@@ -307,10 +315,17 @@ static bool TestUI_StalemateOverlay_BannerVisible(void)
 
     DrawStatusOverlay(&rs, &gs, 0, 0, 80);
 
-    // Banner at y=303, sample (50, 315).
-    Pixel sample   = rs.pixels[(int32)315 * rs.width + (int32)50];
-    Pixel expected = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
-    if (!PixelEq(sample, expected)) return false;
+    // 1. Banner background at (50, 315): left of any text.
+    Pixel banner_px = rs.pixels[(int32)315 * rs.width + (int32)50];
+    Pixel banner_bg = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(banner_px, banner_bg)) return false;
+
+    // 2. Text pixel from glyph 'S' (char 0 of "STALEMATE - DRAW"):
+    //    Row 3 of k_S = 14 = 0b01110, col 1 set. Row 3 of k_C = 16 = 0b10000, col 1 NOT set.
+    //    x = 176 + 0*18 + 1*3 = 179,  y = text_y + 3*3 = 309 + 9 = 318.
+    Pixel text_px    = rs.pixels[(int32)318 * rs.width + (int32)179];
+    Pixel text_color = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR (BGRA)
+    if (!PixelEq(text_px, text_color)) return false;
 
     return true;
 }
