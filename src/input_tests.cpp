@@ -4,6 +4,7 @@
 #include "memory.h"
 #include "moves.h"
 #include "input.h"
+#include "ui.h"
 #include "tests.h"
 
 static AppMemory* s_Memory;
@@ -820,6 +821,107 @@ static bool TestInput_Restart_SafeDuringPendingPromotion(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Game-over click routing contract
+// ---------------------------------------------------------------------------
+// These tests exercise the same conditional logic performed in WM_LBUTTONDOWN:
+//   if (IsRestartButtonHit(px, py, ...)) InputRestart(input, gs);
+// They verify that:
+//   (a) a click inside the restart button triggers a full state reset, and
+//   (b) a click outside the button leaves all state unchanged.
+
+// A click at the restart button position must produce a clean game state.
+// Simulates: WM_LBUTTONDOWN game-over routing where IsRestartButtonHit → true.
+// Board layout: board_x=320, board_y=40, square_size=80.
+// Restart button centre: (640, 390) — confirmed by IsRestartButtonHit tests.
+static bool TestInput_GameOverClick_RestartButtonResetsState(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Dirty the game state by advancing side_to_move and clearing en-passant.
+    Move m = {};
+    m.from_rank = 1; m.from_file = 4;
+    m.to_rank   = 3; m.to_file   = 4;
+    ApplyMove(&gs, &m);
+
+    InputState input = {};
+    InputInit(&input);
+
+    // Simulate dragging so there is also dirty input state.
+    InputHandleDragStart(&input, &gs, 680, 480, 320, 40, 80);
+
+    // Click is on the restart button — IsRestartButtonHit returns true,
+    // so the WM_LBUTTONDOWN handler calls InputRestart.
+    int32 px = 640, py = 390;
+    if (IsRestartButtonHit(px, py, 320, 40, 80))
+        InputRestart(&input, &gs);
+
+    // Game state must be reset.
+    if (gs.side_to_move != COLOR_WHITE)       return false;
+    if (gs.en_passant_rank != -1)             return false;
+    if (gs.en_passant_file != -1)             return false;
+    if (!gs.castling_white_kingside)          return false;
+    if (!gs.castling_white_queenside)         return false;
+    if (!gs.castling_black_kingside)          return false;
+    if (!gs.castling_black_queenside)         return false;
+    // Pawns must be back on their starting ranks.
+    for (int32 f = 0; f < 8; ++f)
+    {
+        if (gs.board.squares[1][f].piece != PIECE_PAWN)  return false;
+        if (gs.board.squares[1][f].color != COLOR_WHITE) return false;
+        if (gs.board.squares[6][f].piece != PIECE_PAWN)  return false;
+        if (gs.board.squares[6][f].color != COLOR_BLACK) return false;
+    }
+
+    // Input state must also be cleared.
+    if (input.dragging)          return false;
+    if (input.pending_promotion) return false;
+
+    return true;
+}
+
+// A click outside the restart button must leave game state unchanged.
+// Simulates: WM_LBUTTONDOWN game-over routing where IsRestartButtonHit → false.
+// Use a point one pixel above the button (640, 359) to verify the guard.
+static bool TestInput_GameOverClick_NonButtonClickDoesNothing(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Apply a move so the position is no longer the starting one.
+    Move m = {};
+    m.from_rank = 1; m.from_file = 4;
+    m.to_rank   = 3; m.to_file   = 4;
+    ApplyMove(&gs, &m);
+    // Now side_to_move == COLOR_BLACK.
+
+    InputState input = {};
+    InputInit(&input);
+
+    // Click is NOT on the restart button — handler does nothing.
+    int32 px = 640, py = 359; // one pixel above the button
+    if (IsRestartButtonHit(px, py, 320, 40, 80))
+        InputRestart(&input, &gs); // must NOT be reached
+
+    // Game state must be unchanged (still at the post-move position).
+    if (gs.side_to_move != COLOR_BLACK)       return false;
+    // en_passant set by the double-pawn push.
+    if (gs.en_passant_rank != 2)              return false;
+    if (gs.en_passant_file != 4)              return false;
+    // The moved pawn must still be on rank 3.
+    if (gs.board.squares[3][4].piece != PIECE_PAWN)  return false;
+    if (gs.board.squares[3][4].color != COLOR_WHITE) return false;
+    // Starting square must be empty.
+    if (gs.board.squares[1][4].piece != PIECE_NONE)  return false;
+
+    return true;
+}
+
 
 static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_PixelToSquare_A1_Corner),
@@ -855,6 +957,8 @@ static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_Restart_ClearsInputState),
     TEST_ENTRY(TestInput_Restart_SafeDuringActiveDrag),
     TEST_ENTRY(TestInput_Restart_SafeDuringPendingPromotion),
+    TEST_ENTRY(TestInput_GameOverClick_RestartButtonResetsState),
+    TEST_ENTRY(TestInput_GameOverClick_NonButtonClickDoesNothing),
 };
 
 void RunInputTests(AppMemory* memory, int32* passed, int32* total)

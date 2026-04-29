@@ -272,7 +272,7 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 
 `DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves, hide_rank, hide_file)` draws the complete board view into the renderer's pixel buffer in two passes:
 
-1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). Highlighted squares (selected piece and valid-move targets) are tinted green. Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
+1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). When the side to move is in check, the king's square is tinted red (`BOARD_CHECK`) before any other overlay is applied. Selected-piece and valid-move-target squares are tinted green (and may override the check tint for that specific square when the king is selected). Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
 
 2. **Piece pass** — calls the internal `DrawPiece` for every non-empty square, except the square identified by `hide_rank`/`hide_file` (used during drag so the piece renders only at the cursor rather than on the board). Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
 
@@ -289,7 +289,17 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 
 `DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` overlays four golden-highlighted squares at the promotion file (Queen, Rook, Bishop, Knight in slot order) so the player can click to choose a promotion piece.
 
-`DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a centered panel on top of the board when the game has ended.  The panel consists of:
+`DrawStatusOverlay(rs, gs, board_x, board_y, square_size)` draws the end-game status message over the board when the game is no longer ongoing.  It calls `EvaluatePosition` internally each frame and does nothing when the result is `GAME_ONGOING`.  For a decisive or drawn result it renders:
+
+- A dark full-width banner rectangle vertically centred on the board.
+- A message rendered in near-white pixel glyphs from a built-in 5×7 bitmap font (scale 3×):
+  - `GAME_WHITE_WINS` → `"CHECKMATE - WHITE WINS"`
+  - `GAME_BLACK_WINS` → `"CHECKMATE - BLACK WINS"`
+  - `GAME_DRAW`       → `"STALEMATE - DRAW"`
+
+The font is implemented entirely via `DrawRect` calls — no GDI text functions are used.  Only the uppercase Latin letters required by the three status strings plus space and hyphen are defined; all other characters render as blank glyphs.
+
+`DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a centered panel on top of the board when the game has ended.  It is called after `DrawStatusOverlay`.  The panel consists of:
 
 - A dark background rectangle with a light-gray border.
 - A result strip (top 60 px of the panel) coloured near-white for a White win, dark gray for a Black win, or mid-gray for a draw, with a king-piece icon identifying the winning side (both kings shown for a draw).
