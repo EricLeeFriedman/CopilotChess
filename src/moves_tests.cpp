@@ -1790,6 +1790,7 @@ static bool TestCastling_ApplyKingside_Black(void)
 
     gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
     gs->board.squares[7][7] = { PIECE_ROOK, COLOR_BLACK };
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // White king on e1 (non-interfering)
     gs->side_to_move = COLOR_BLACK;
 
     Move cm          = {};
@@ -1834,6 +1835,7 @@ static bool TestCastling_ApplyQueenside_Black(void)
 
     gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
     gs->board.squares[7][0] = { PIECE_ROOK, COLOR_BLACK };
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // White king on e1 (non-interfering)
     gs->side_to_move = COLOR_BLACK;
 
     Move cm          = {};
@@ -1879,6 +1881,8 @@ static bool TestPawn_ApplyEnPassant_Black(void)
     // Black pawn on d4 (rank 3, file 3), White pawn on e4 (rank 3, file 4).
     gs->board.squares[3][3] = { PIECE_PAWN, COLOR_BLACK };
     gs->board.squares[3][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
     gs->en_passant_rank = 2;
     gs->en_passant_file = 4;
     gs->side_to_move = COLOR_BLACK;
@@ -1918,6 +1922,8 @@ static bool TestPawn_ApplyPromotion_Black_Queen(void)
 
     // Black pawn on e2 (rank 1, file 4).
     gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
     gs->side_to_move = COLOR_BLACK;
 
     Move pm    = {};
@@ -1953,6 +1959,8 @@ static bool TestPawn_ApplyPromotion_Black_Rook(void)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
     gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
     gs->side_to_move = COLOR_BLACK;
 
     Move pm    = {};
@@ -1986,6 +1994,8 @@ static bool TestPawn_ApplyPromotion_Black_Bishop(void)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
     gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
     gs->side_to_move = COLOR_BLACK;
 
     Move pm    = {};
@@ -2019,6 +2029,8 @@ static bool TestPawn_ApplyPromotion_Black_Knight(void)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
     gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
     gs->side_to_move = COLOR_BLACK;
 
     Move pm    = {};
@@ -2052,6 +2064,8 @@ static bool TestPawn_ApplyPromotion_White_Rook(void)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
     gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
 
     Move pm    = {};
     pm.from_rank  = 6; pm.from_file  = 4;
@@ -2084,6 +2098,8 @@ static bool TestPawn_ApplyPromotion_White_Bishop(void)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
     gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
 
     Move pm    = {};
     pm.from_rank  = 6; pm.from_file  = 4;
@@ -2116,6 +2132,8 @@ static bool TestPawn_ApplyPromotion_White_Knight(void)
             gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
 
     gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
 
     Move pm    = {};
     pm.from_rank  = 6; pm.from_file  = 4;
