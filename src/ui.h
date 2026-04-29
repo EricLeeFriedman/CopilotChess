@@ -70,3 +70,9 @@ void DrawGameOverOverlay(RendererState*   rs,
 // draw call.
 bool IsRestartButtonHit(int32 px, int32 py,
                         int32 board_x, int32 board_y, int32 square_size);
+
+// Draw the turn indicator below the board showing whose turn it is.
+// Renders "WHITE TO MOVE" or "BLACK TO MOVE" centred in the gap below the board.
+// Call only when the game is ongoing (not when the game-over overlay is shown).
+void DrawTurnIndicator(RendererState* rs, Color side_to_move,
+                       int32 board_x, int32 board_y, int32 square_size);

@@ -154,6 +154,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
             DrawGameOverOverlay(&g_Renderer, g_GameResult,
                                 BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
         }
+        else
+        {
+            DrawTurnIndicator(&g_Renderer, g_GameState->side_to_move,
+                              BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+        }
 
         PresentFrame(&g_Renderer, window);
     }
