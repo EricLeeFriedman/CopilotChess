@@ -354,6 +354,73 @@ static bool TestPawn_ApplyPromotion(void)
 }
 
 // ---------------------------------------------------------------------------
+// Black promotion: GeneratePawnMoves generates all four promotion pieces.
+// ---------------------------------------------------------------------------
+static bool TestPawn_Promotion_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black pawn on e2 (rank 1, file 4) — one push away from promotion.
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList list = {};
+    GeneratePawnMoves(gs, &list);
+
+    // One move per legal promotion piece must be present.
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_QUEEN))  return false;
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_ROOK))   return false;
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_BISHOP)) return false;
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_KNIGHT)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black en passant: GeneratePawnMoves generates en passant capture.
+// ---------------------------------------------------------------------------
+static bool TestPawn_EnPassant_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black pawn on d4 (rank 3, file 3).
+    gs->board.squares[3][3] = { PIECE_PAWN, COLOR_BLACK };
+    // White pawn on e4 (rank 3, file 4) — just double-pushed from e2.
+    gs->board.squares[3][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+
+    // Set en passant target to e3 (rank 2, file 4).
+    gs->en_passant_rank = 2;
+    gs->en_passant_file = 4;
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList list = {};
+    GeneratePawnMoves(gs, &list);
+
+    // Black should be able to capture en passant to e3.
+    if (!FindEnPassantMove(&list, 3, 3, 2, 4)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // En passant target set after double push, cleared after next move.
 // ---------------------------------------------------------------------------
 static bool TestPawn_EnPassantTargetTracking(void)
@@ -2161,6 +2228,8 @@ static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestPawn_ApplyEnPassant),
     TEST_ENTRY(TestPawn_Promotion),
     TEST_ENTRY(TestPawn_ApplyPromotion),
+    TEST_ENTRY(TestPawn_Promotion_Black),
+    TEST_ENTRY(TestPawn_EnPassant_Black),
     TEST_ENTRY(TestPawn_EnPassantTargetTracking),
 
     TEST_ENTRY(TestKnight_CenterMoves),
