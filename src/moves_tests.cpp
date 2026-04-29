@@ -354,6 +354,73 @@ static bool TestPawn_ApplyPromotion(void)
 }
 
 // ---------------------------------------------------------------------------
+// Black promotion: GeneratePawnMoves generates all four promotion pieces.
+// ---------------------------------------------------------------------------
+static bool TestPawn_Promotion_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black pawn on e2 (rank 1, file 4) — one push away from promotion.
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList list = {};
+    GeneratePawnMoves(gs, &list);
+
+    // One move per legal promotion piece must be present.
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_QUEEN))  return false;
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_ROOK))   return false;
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_BISHOP)) return false;
+    if (!FindPromotion(&list, 1, 4, 0, 4, PIECE_KNIGHT)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black en passant: GeneratePawnMoves generates en passant capture.
+// ---------------------------------------------------------------------------
+static bool TestPawn_EnPassant_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black pawn on d4 (rank 3, file 3).
+    gs->board.squares[3][3] = { PIECE_PAWN, COLOR_BLACK };
+    // White pawn on e4 (rank 3, file 4) — just double-pushed from e2.
+    gs->board.squares[3][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+
+    // Set en passant target to e3 (rank 2, file 4).
+    gs->en_passant_rank = 2;
+    gs->en_passant_file = 4;
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList list = {};
+    GeneratePawnMoves(gs, &list);
+
+    // Black should be able to capture en passant to e3.
+    if (!FindEnPassantMove(&list, 3, 3, 2, 4)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // En passant target set after double push, cleared after next move.
 // ---------------------------------------------------------------------------
 static bool TestPawn_EnPassantTargetTracking(void)
@@ -1733,6 +1800,479 @@ static bool TestEvaluatePosition_Stalemate(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Turn management: side_to_move alternates after each move.
+// ---------------------------------------------------------------------------
+static bool TestApplyMove_TurnAlternates(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    // White to move initially.
+    if (gs->side_to_move != COLOR_WHITE) return false;
+
+    // White moves e2 -> e4.
+    Move m1 = {};
+    m1.from_rank = 1; m1.from_file = 4;
+    m1.to_rank   = 3; m1.to_file   = 4;
+    m1.promotion = PIECE_NONE;
+    m1.is_en_passant = false;
+    m1.is_castling = false;
+    ApplyMove(gs, &m1);
+
+    // Black to move after White's move.
+    if (gs->side_to_move != COLOR_BLACK) return false;
+
+    // Black moves e7 -> e5.
+    Move m2 = {};
+    m2.from_rank = 6; m2.from_file = 4;
+    m2.to_rank   = 4; m2.to_file   = 4;
+    m2.promotion = PIECE_NONE;
+    m2.is_en_passant = false;
+    m2.is_castling = false;
+    ApplyMove(gs, &m2);
+
+    // White to move after Black's move.
+    if (gs->side_to_move != COLOR_WHITE) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black castling: ApplyMove — after kingside castle, king on g8, rook on f8.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ApplyKingside_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_ROOK, COLOR_BLACK };
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // White king on e1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    Move cm          = {};
+    cm.from_rank     = 7; cm.from_file = 4; // e8
+    cm.to_rank       = 7; cm.to_file   = 6; // g8
+    cm.promotion     = PIECE_NONE;
+    cm.is_en_passant = false;
+    cm.is_castling   = true;
+
+    ApplyMove(gs, &cm);
+
+    // King should be on g8.
+    if (gs->board.squares[7][6].piece != PIECE_KING) return false;
+    if (gs->board.squares[7][6].color != COLOR_BLACK) return false;
+    // Rook should be on f8.
+    if (gs->board.squares[7][5].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[7][5].color != COLOR_BLACK) return false;
+    // Old king square (e8) must be empty.
+    if (gs->board.squares[7][4].piece != PIECE_NONE) return false;
+    // Old rook square (h8) must be empty.
+    if (gs->board.squares[7][7].piece != PIECE_NONE) return false;
+    // Both black castling rights must now be cleared.
+    if (gs->castling_black_kingside)  return false;
+    if (gs->castling_black_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black castling: ApplyMove — after queenside castle, king on c8, rook on d8.
+// ---------------------------------------------------------------------------
+static bool TestCastling_ApplyQueenside_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK };
+    gs->board.squares[7][0] = { PIECE_ROOK, COLOR_BLACK };
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // White king on e1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    Move cm          = {};
+    cm.from_rank     = 7; cm.from_file = 4; // e8
+    cm.to_rank       = 7; cm.to_file   = 2; // c8
+    cm.promotion     = PIECE_NONE;
+    cm.is_en_passant = false;
+    cm.is_castling   = true;
+
+    ApplyMove(gs, &cm);
+
+    // King should be on c8.
+    if (gs->board.squares[7][2].piece != PIECE_KING) return false;
+    if (gs->board.squares[7][2].color != COLOR_BLACK) return false;
+    // Rook should be on d8.
+    if (gs->board.squares[7][3].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[7][3].color != COLOR_BLACK) return false;
+    // Old king square (e8) must be empty.
+    if (gs->board.squares[7][4].piece != PIECE_NONE) return false;
+    // Old rook square (a8) must be empty.
+    if (gs->board.squares[7][0].piece != PIECE_NONE) return false;
+    // Both black castling rights must now be cleared.
+    if (gs->castling_black_kingside)  return false;
+    if (gs->castling_black_queenside) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black kingside castling: GenerateCastlingMoves generates the move when available.
+// ---------------------------------------------------------------------------
+static bool TestCastling_BlackKingsideAvailable(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // e8
+    gs->board.squares[7][7] = { PIECE_ROOK, COLOR_BLACK }; // h8
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // e1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Black kingside castling: king from e8 (7,4) to g8 (7,6).
+    if (!FindCastlingMove(&legal, 7, 4, 7, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black queenside castling: GenerateCastlingMoves generates the move when available.
+// ---------------------------------------------------------------------------
+static bool TestCastling_BlackQueensideAvailable(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // e8
+    gs->board.squares[7][0] = { PIECE_ROOK, COLOR_BLACK }; // a8
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // e1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Black queenside castling: king from e8 (7,4) to c8 (7,2).
+    if (!FindCastlingMove(&legal, 7, 4, 7, 2)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black en passant: ApplyMove removes the White pawn that was jumped over.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyEnPassant_Black(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black pawn on d4 (rank 3, file 3), White pawn on e4 (rank 3, file 4).
+    gs->board.squares[3][3] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[3][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->en_passant_rank = 2;
+    gs->en_passant_file = 4;
+    gs->side_to_move = COLOR_BLACK;
+
+    Move ep    = {};
+    ep.from_rank     = 3; ep.from_file     = 3;
+    ep.to_rank       = 2; ep.to_file       = 4;
+    ep.is_en_passant = true;
+    ep.promotion     = PIECE_NONE;
+
+    ApplyMove(gs, &ep);
+
+    // Black pawn should now be on e3 (rank 2, file 4).
+    if (gs->board.squares[2][4].piece != PIECE_PAWN)  return false;
+    if (gs->board.squares[2][4].color != COLOR_BLACK) return false;
+    // White pawn on e4 must be gone.
+    if (gs->board.squares[3][4].piece != PIECE_NONE)  return false;
+    // Black pawn's old square must be clear.
+    if (gs->board.squares[3][3].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black promotion: ApplyMove replaces pawn with queen on rank 1.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_Black_Queen(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black pawn on e2 (rank 1, file 4).
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    Move pm    = {};
+    pm.from_rank  = 1; pm.from_file  = 4;
+    pm.to_rank    = 0; pm.to_file    = 4;
+    pm.promotion  = PIECE_QUEEN;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    // e1 should now contain a black queen.
+    if (gs->board.squares[0][4].piece != PIECE_QUEEN) return false;
+    if (gs->board.squares[0][4].color != COLOR_BLACK) return false;
+    // e2 must be clear.
+    if (gs->board.squares[1][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black promotion: ApplyMove replaces pawn with rook on rank 1.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_Black_Rook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    Move pm    = {};
+    pm.from_rank  = 1; pm.from_file  = 4;
+    pm.to_rank    = 0; pm.to_file    = 4;
+    pm.promotion  = PIECE_ROOK;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    if (gs->board.squares[0][4].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[0][4].color != COLOR_BLACK) return false;
+    if (gs->board.squares[1][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black promotion: ApplyMove replaces pawn with bishop on rank 1.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_Black_Bishop(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    Move pm    = {};
+    pm.from_rank  = 1; pm.from_file  = 4;
+    pm.to_rank    = 0; pm.to_file    = 4;
+    pm.promotion  = PIECE_BISHOP;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    if (gs->board.squares[0][4].piece != PIECE_BISHOP) return false;
+    if (gs->board.squares[0][4].color != COLOR_BLACK) return false;
+    if (gs->board.squares[1][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black promotion: ApplyMove replaces pawn with knight on rank 1.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_Black_Knight(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[1][4] = { PIECE_PAWN, COLOR_BLACK };
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    Move pm    = {};
+    pm.from_rank  = 1; pm.from_file  = 4;
+    pm.to_rank    = 0; pm.to_file    = 4;
+    pm.promotion  = PIECE_KNIGHT;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    if (gs->board.squares[0][4].piece != PIECE_KNIGHT) return false;
+    if (gs->board.squares[0][4].color != COLOR_BLACK) return false;
+    if (gs->board.squares[1][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// White promotion: ApplyMove replaces pawn with rook on rank 8.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_White_Rook(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+
+    Move pm    = {};
+    pm.from_rank  = 6; pm.from_file  = 4;
+    pm.to_rank    = 7; pm.to_file    = 4;
+    pm.promotion  = PIECE_ROOK;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    if (gs->board.squares[7][4].piece != PIECE_ROOK) return false;
+    if (gs->board.squares[7][4].color != COLOR_WHITE) return false;
+    if (gs->board.squares[6][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// White promotion: ApplyMove replaces pawn with bishop on rank 8.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_White_Bishop(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+
+    Move pm    = {};
+    pm.from_rank  = 6; pm.from_file  = 4;
+    pm.to_rank    = 7; pm.to_file    = 4;
+    pm.promotion  = PIECE_BISHOP;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    if (gs->board.squares[7][4].piece != PIECE_BISHOP) return false;
+    if (gs->board.squares[7][4].color != COLOR_WHITE) return false;
+    if (gs->board.squares[6][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// White promotion: ApplyMove replaces pawn with knight on rank 8.
+// ---------------------------------------------------------------------------
+static bool TestPawn_ApplyPromotion_White_Knight(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[6][4] = { PIECE_PAWN, COLOR_WHITE };
+    gs->board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White king on a1 (non-interfering)
+    gs->board.squares[7][7] = { PIECE_KING, COLOR_BLACK }; // Black king on h8 (non-interfering)
+
+    Move pm    = {};
+    pm.from_rank  = 6; pm.from_file  = 4;
+    pm.to_rank    = 7; pm.to_file    = 4;
+    pm.promotion  = PIECE_KNIGHT;
+    pm.is_en_passant = false;
+    pm.is_castling = false;
+
+    ApplyMove(gs, &pm);
+
+    if (gs->board.squares[7][4].piece != PIECE_KNIGHT) return false;
+    if (gs->board.squares[7][4].color != COLOR_WHITE) return false;
+    if (gs->board.squares[6][4].piece != PIECE_NONE)  return false;
+    return true;
+}
+
 static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestPawn_WhiteDoublePush),
     TEST_ENTRY(TestPawn_BlackDoublePush),
@@ -1744,6 +2284,8 @@ static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestPawn_ApplyEnPassant),
     TEST_ENTRY(TestPawn_Promotion),
     TEST_ENTRY(TestPawn_ApplyPromotion),
+    TEST_ENTRY(TestPawn_Promotion_Black),
+    TEST_ENTRY(TestPawn_EnPassant_Black),
     TEST_ENTRY(TestPawn_EnPassantTargetTracking),
 
     TEST_ENTRY(TestKnight_CenterMoves),
@@ -1795,6 +2337,20 @@ static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestEvaluatePosition_Ongoing),
     TEST_ENTRY(TestEvaluatePosition_Checkmate_FoolsMate),
     TEST_ENTRY(TestEvaluatePosition_Stalemate),
+
+    TEST_ENTRY(TestApplyMove_TurnAlternates),
+    TEST_ENTRY(TestCastling_ApplyKingside_Black),
+    TEST_ENTRY(TestCastling_ApplyQueenside_Black),
+    TEST_ENTRY(TestCastling_BlackKingsideAvailable),
+    TEST_ENTRY(TestCastling_BlackQueensideAvailable),
+    TEST_ENTRY(TestPawn_ApplyEnPassant_Black),
+    TEST_ENTRY(TestPawn_ApplyPromotion_Black_Queen),
+    TEST_ENTRY(TestPawn_ApplyPromotion_Black_Rook),
+    TEST_ENTRY(TestPawn_ApplyPromotion_Black_Bishop),
+    TEST_ENTRY(TestPawn_ApplyPromotion_Black_Knight),
+    TEST_ENTRY(TestPawn_ApplyPromotion_White_Rook),
+    TEST_ENTRY(TestPawn_ApplyPromotion_White_Bishop),
+    TEST_ENTRY(TestPawn_ApplyPromotion_White_Knight),
 };
 
 void RunMovesTests(AppMemory* memory, int32* passed, int32* total)
