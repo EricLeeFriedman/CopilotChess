@@ -151,7 +151,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
 
         if (g_GameResult != GAME_ONGOING)
         {
-            DrawStatusOverlay(&g_Renderer, g_GameState, BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
             DrawGameOverOverlay(&g_Renderer, g_GameResult,
                                 BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
         }

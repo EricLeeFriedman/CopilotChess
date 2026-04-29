@@ -617,6 +617,41 @@ void DrawGameOverOverlay(RendererState*   rs,
         DrawPiece(rs, ox + OVERLAY_W - icon_size,   oy, icon_size, PIECE_KING, COLOR_BLACK);
     }
 
+    // Render the result message text inside the result strip at scale 2.
+    // Text color contrasts with the strip: dark on a light strip, light on dark/mid.
+    {
+        const uint8* msg;
+        Pixel msg_color;
+        if (result == GAME_WHITE_WINS)
+        {
+            msg       = (const uint8*)"CHECKMATE - WHITE WINS";
+            msg_color = OVERLAY_BG;
+        }
+        else if (result == GAME_BLACK_WINS)
+        {
+            msg       = (const uint8*)"CHECKMATE - BLACK WINS";
+            msg_color = STATUS_TEXT_COLOR;
+        }
+        else
+        {
+            msg       = (const uint8*)"STALEMATE - DRAW";
+            msg_color = STATUS_TEXT_COLOR;
+        }
+
+        int32 text_scale = 2;
+        int32 char_step  = (5 + 1) * text_scale;  // 12 px per character
+        int32 glyph_h2   = 7 * text_scale;         // 14 px
+
+        int32 msg_len = 0;
+        for (const uint8* p = msg; *p; ++p) ++msg_len;
+        int32 msg_w = msg_len * char_step - text_scale;
+
+        int32 msg_x = ox + (OVERLAY_W - msg_w) / 2;
+        int32 msg_y = oy + (RESULT_H - glyph_h2) / 2;
+
+        DrawStatusText(rs, msg, msg_x, msg_y, text_scale, msg_color);
+    }
+
     // Restart button: green rectangle.
     int32 bx, by, bw, bh;
     GetRestartButtonRect(board_x, board_y, square_size, &bx, &by, &bw, &bh);

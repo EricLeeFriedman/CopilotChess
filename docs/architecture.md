@@ -297,12 +297,12 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
   - `GAME_BLACK_WINS` → `"CHECKMATE - BLACK WINS"`
   - `GAME_DRAW`       → `"STALEMATE - DRAW"`
 
-The font is implemented entirely via `DrawRect` calls — no GDI text functions are used.  Only the uppercase Latin letters required by the three status strings plus space and hyphen are defined; all other characters render as blank glyphs.
+The font is implemented entirely via `DrawRect` calls — no GDI text functions are used.  Only the uppercase Latin letters required by the three status strings plus space and hyphen are defined; all other characters render as blank glyphs.  `DrawStatusOverlay` is available as a standalone function but is **not** called by the game-over render path; the full result message is rendered directly inside `DrawGameOverOverlay`.
 
-`DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a centered panel on top of the board when the game has ended.  It is called after `DrawStatusOverlay`.  The panel consists of:
+`DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a self-contained end-game panel centered on the board.  The panel consists of:
 
 - A dark background rectangle with a light-gray border.
-- A result strip (top 60 px of the panel) coloured near-white for a White win, dark gray for a Black win, or mid-gray for a draw, with a king-piece icon identifying the winning side (both kings shown for a draw).
+- A result strip (top 60 px of the panel) coloured near-white for a White win, dark gray for a Black win, or mid-gray for a draw, with a king-piece icon identifying the winning side (both kings shown for a draw) **and** the result message text rendered at scale 2 inside the strip.  Text color is dark on the near-white strip and near-white on the dark/mid-gray strips.
 - A green restart button (lower portion of the panel) with a ring icon.  Its pixel bounds are the same values returned by `IsRestartButtonHit`.
 
 `IsRestartButtonHit(px, py, board_x, board_y, square_size)` returns `true` when `(px, py)` falls within the restart button drawn by `DrawGameOverOverlay`.  The button is computed relative to the board layout constants so it scales correctly if `square_size` changes.  With the standard layout (`board_x=320`, `board_y=40`, `square_size=80`) the button occupies pixel rows 360–419 and pixel columns 500–779.

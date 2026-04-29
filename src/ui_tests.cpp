@@ -474,6 +474,79 @@ static bool TestUI_IsRestartButtonHit_OutsideButton(void)
     return true;
 }
 
+// DrawGameOverOverlay (GAME_BLACK_WINS): the result strip must show RESULT_BLACK_COL,
+// the message text "CHECKMATE - BLACK WINS" must be rendered (near-white on dark strip),
+// and the restart button must be filled with BTN_FILL.
+// With board_x=320, board_y=40, square_size=80:
+//   ox=480; oy=280; RESULT_H=60; text_scale=2; glyph_h=14.
+//   "CHECKMATE - BLACK WINS" (22 chars): msg_w=262, msg_x=480+29=509, msg_y=280+23=303.
+//   'C' row 1 = 16 = 0b10000, col 0 set → x=509, y=303+2=305.
+//   Strip sample at (285, 485): col 485 < 509 (before any text), rows < 303 (above text).
+static bool TestUI_DrawGameOverOverlay_BlackWins_PixelAssertion(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(1280, 720, &rs)) return false;
+
+    DrawGameOverOverlay(&rs, GAME_BLACK_WINS, 320, 40, 80);
+
+    // 1. Result strip background (top-left corner, before any text or king).
+    Pixel strip_px   = rs.pixels[(int32)285 * rs.width + (int32)485];
+    Pixel black_col  = { 50, 50, 50, 0 }; // RESULT_BLACK_COL
+    if (!PixelEq(strip_px, black_col)) return false;
+
+    // 2. Text pixel from 'C' row 1, col 0 of "CHECKMATE - BLACK WINS" (near-white on dark).
+    //    x = msg_x + 0 * 2 = 509, y = msg_y + 1 * 2 = 305.
+    Pixel text_px  = rs.pixels[(int32)305 * rs.width + (int32)509];
+    Pixel text_col = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR
+    if (!PixelEq(text_px, text_col)) return false;
+
+    // 3. Restart button fill (bottom-right corner, same geometry as white-wins test).
+    Pixel btn_px  = rs.pixels[(int32)410 * rs.width + (int32)770];
+    Pixel btn_col = { 50, 180, 50, 0 }; // BTN_FILL
+    if (!PixelEq(btn_px, btn_col)) return false;
+
+    return true;
+}
+
+// DrawGameOverOverlay (GAME_DRAW): the result strip must show RESULT_DRAW_COL,
+// the message text "STALEMATE - DRAW" must be rendered (near-white on mid-gray),
+// and both king icons must be drawn (white king on the left, black king on the right).
+// With board_x=320, board_y=40, square_size=80:
+//   ox=480; oy=280; RESULT_H=60; icon_size=60.
+//   White king: sq_x=480, sq_y=280, sq_size=60.
+//     S(24)=18; base_y=334; bx=501, by=316. Body interior (row 325, col 510) = PIECE_W_FILL.
+//   "STALEMATE - DRAW" (16 chars): msg_w=190, msg_x=480+65=545, msg_y=303.
+//     'S' row 0 = 14 = 0b01110, col 1 set → x=545+2=547, y=303.
+static bool TestUI_DrawGameOverOverlay_Draw_PixelAssertion(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(1280, 720, &rs)) return false;
+
+    DrawGameOverOverlay(&rs, GAME_DRAW, 320, 40, 80);
+
+    // 1. Result strip background at (285, 485) — above text, before king bodies.
+    Pixel strip_px  = rs.pixels[(int32)285 * rs.width + (int32)485];
+    Pixel draw_col  = { 120, 120, 120, 0 }; // RESULT_DRAW_COL
+    if (!PixelEq(strip_px, draw_col)) return false;
+
+    // 2. Text pixel from 'S' row 0, col 1 of "STALEMATE - DRAW" (near-white on mid-gray).
+    //    x = 545 + 1*2 = 547, y = 303.
+    Pixel text_px  = rs.pixels[(int32)303 * rs.width + (int32)547];
+    Pixel text_col = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR
+    if (!PixelEq(text_px, text_col)) return false;
+
+    // 3. White king body interior at (325, 510) — proves both-king rendering.
+    //    White king sq_x=480, cx=510. Body: bx=501, by=316, bw=18, bh=18.
+    //    Row 325 col 510 is inside the body, below any cross elements (rows 303-316).
+    Pixel king_px   = rs.pixels[(int32)325 * rs.width + (int32)510];
+    Pixel w_fill    = { 230, 245, 245, 0 }; // PIECE_W_FILL
+    if (!PixelEq(king_px, w_fill)) return false;
+
+    return true;
+}
+
 
 static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_DrawBoard_NoCrash),
@@ -487,6 +560,8 @@ static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_OngoingGame_NoOverlay),
     TEST_ENTRY(TestUI_CheckmateOverlay_WhiteWins_BannerAndTextPixel),
     TEST_ENTRY(TestUI_DrawGameOverOverlay_WhiteWins_PixelAssertion),
+    TEST_ENTRY(TestUI_DrawGameOverOverlay_BlackWins_PixelAssertion),
+    TEST_ENTRY(TestUI_DrawGameOverOverlay_Draw_PixelAssertion),
     TEST_ENTRY(TestUI_IsRestartButtonHit_InsideButton),
     TEST_ENTRY(TestUI_IsRestartButtonHit_OutsideButton),
 };
