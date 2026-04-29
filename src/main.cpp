@@ -146,6 +146,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
                       -1, -1, nullptr);
         }
 
+        DrawStatusOverlay(&g_Renderer, g_GameState, BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+
         PresentFrame(&g_Renderer, window);
     }
 

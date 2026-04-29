@@ -12,12 +12,104 @@ static const Pixel BOARD_LIGHT    = { 181, 217, 240, 0 };  // #F0D9B5 light squa
 static const Pixel BOARD_DARK     = {  99, 136, 181, 0 };  // #B58863 dark square
 static const Pixel BOARD_SELECTED = { 105, 151, 130, 0 };  // green tint – selected square
 static const Pixel BOARD_MOVE_DOT = {  64, 111, 100, 0 };  // darker green – valid-move indicator
+static const Pixel BOARD_CHECK    = {  50,  50, 200, 0 };  // red tint – king square when in check
+
+// Status overlay colours
+static const Pixel STATUS_BANNER_BG  = {  20,  20,  20, 0 };  // very dark banner background
+static const Pixel STATUS_TEXT_COLOR = { 220, 220, 220, 0 };  // near-white message text
 
 // Piece body colours
 static const Pixel PIECE_W_FILL   = { 230, 245, 245, 0 };  // near-white piece fill
 static const Pixel PIECE_W_BORDER = {  60,  60,  60, 0 };  // dark outline for white pieces
 static const Pixel PIECE_B_FILL   = {  40,  40,  40, 0 };  // near-black piece fill
 static const Pixel PIECE_B_BORDER = { 200, 200, 200, 0 };  // light outline for black pieces
+
+// ---------------------------------------------------------------------------
+// Minimal 5×7 pixel font for in-game status messages.
+// Each glyph is 7 bytes; each byte is a 5-bit row mask (bit 4 = leftmost pixel).
+// Only the characters needed for status strings are defined.
+// ---------------------------------------------------------------------------
+
+struct Glyph5x7
+{
+    uint8 rows[7];
+};
+
+// Returns a pointer to the 5×7 glyph for the given ASCII character.
+// Returns a pointer to a blank glyph for characters without a definition.
+static const Glyph5x7* GetGlyph(uint8 ch)
+{
+    static const Glyph5x7 k_Blank = {{ 0, 0, 0, 0, 0, 0, 0 }};
+
+    static const Glyph5x7 k_Space  = {{ 0,  0,  0,  0,  0,  0,  0  }};
+    static const Glyph5x7 k_Hyphen = {{ 0,  0,  0,  31, 0,  0,  0  }};
+    static const Glyph5x7 k_A = {{ 14, 17, 17, 31, 17, 17, 17 }};
+    static const Glyph5x7 k_B = {{ 30, 17, 17, 30, 17, 17, 30 }};
+    static const Glyph5x7 k_C = {{ 14, 16, 16, 16, 16, 16, 14 }};
+    static const Glyph5x7 k_D = {{ 30, 17, 17, 17, 17, 17, 30 }};
+    static const Glyph5x7 k_E = {{ 31, 16, 16, 30, 16, 16, 31 }};
+    static const Glyph5x7 k_H = {{ 17, 17, 17, 31, 17, 17, 17 }};
+    static const Glyph5x7 k_I = {{ 31,  4,  4,  4,  4,  4, 31 }};
+    static const Glyph5x7 k_K = {{ 17, 18, 20, 24, 20, 18, 17 }};
+    static const Glyph5x7 k_L = {{ 16, 16, 16, 16, 16, 16, 31 }};
+    static const Glyph5x7 k_M = {{ 17, 27, 21, 17, 17, 17, 17 }};
+    static const Glyph5x7 k_N = {{ 17, 25, 21, 19, 17, 17, 17 }};
+    static const Glyph5x7 k_R = {{ 30, 17, 17, 30, 20, 18, 17 }};
+    static const Glyph5x7 k_S = {{ 14, 16, 16, 14,  1,  1, 14 }};
+    static const Glyph5x7 k_T = {{ 31,  4,  4,  4,  4,  4,  4 }};
+    static const Glyph5x7 k_W = {{ 17, 17, 17, 21, 21, 27, 17 }};
+
+    switch (ch)
+    {
+        case ' ':  return &k_Space;
+        case '-':  return &k_Hyphen;
+        case 'A':  return &k_A;
+        case 'B':  return &k_B;
+        case 'C':  return &k_C;
+        case 'D':  return &k_D;
+        case 'E':  return &k_E;
+        case 'H':  return &k_H;
+        case 'I':  return &k_I;
+        case 'K':  return &k_K;
+        case 'L':  return &k_L;
+        case 'M':  return &k_M;
+        case 'N':  return &k_N;
+        case 'R':  return &k_R;
+        case 'S':  return &k_S;
+        case 'T':  return &k_T;
+        case 'W':  return &k_W;
+        default:   return &k_Blank;
+    }
+}
+
+// Draw one 5×7 glyph at pixel (x, y) with each pixel scaled to scale×scale.
+static void DrawGlyph(RendererState* rs, int32 x, int32 y, int32 scale,
+                      const Glyph5x7* g, Pixel color)
+{
+    for (int32 row = 0; row < 7; ++row)
+    {
+        uint8 mask = g->rows[row];
+        for (int32 col = 0; col < 5; ++col)
+        {
+            if ((mask >> (4 - col)) & 1)
+                DrawRect(rs, x + col * scale, y + row * scale, scale, scale, color);
+        }
+    }
+}
+
+// Draw a null-terminated ASCII string starting at pixel (x, y).
+// Characters are rendered at the given scale; each character advances by (5+1)*scale px.
+static void DrawStatusText(RendererState* rs, const uint8* text,
+                           int32 x, int32 y, int32 scale, Pixel color)
+{
+    int32 char_step = (5 + 1) * scale;
+    int32 cx = x;
+    for (const uint8* p = text; *p; ++p)
+    {
+        DrawGlyph(rs, cx, y, scale, GetGlyph(*p), color);
+        cx += char_step;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -242,6 +334,9 @@ void DrawBoard(RendererState*   rs,
 {
     ASSERT(rs && gs);
 
+    // Determine once whether the side to move is in check (used for king highlight).
+    bool in_check = IsInCheck(&gs->board, gs->side_to_move);
+
     // -----------------------------------------------------------------------
     // Pass 1: draw the 64 squares
     // -----------------------------------------------------------------------
@@ -259,7 +354,16 @@ void DrawBoard(RendererState*   rs,
             bool  is_light = ((rank + file) & 1) != 0;
             Pixel sq_color = is_light ? BOARD_LIGHT : BOARD_DARK;
 
-            // Overlay: selected square or valid-move target
+            // Check highlight: king square of the side to move when in check.
+            // Applied before the selection overlay so the selection can override it.
+            if (in_check)
+            {
+                const Square& sq = gs->board.squares[rank][file];
+                if (sq.piece == PIECE_KING && sq.color == gs->side_to_move)
+                    sq_color = BOARD_CHECK;
+            }
+
+            // Overlay: selected square or valid-move target (overrides check highlight)
             if (rank == selected_rank && file == selected_file)
             {
                 sq_color = BOARD_SELECTED;
@@ -333,6 +437,52 @@ void DrawPieceAt(RendererState* rs,
     int32 sq_x = center_x - sq_size / 2;
     int32 sq_y = center_y - sq_size / 2;
     DrawPiece(rs, sq_x, sq_y, sq_size, type, piece_color);
+}
+
+// ---------------------------------------------------------------------------
+// Status overlay: checkmate and stalemate end-game messages.
+// ---------------------------------------------------------------------------
+
+void DrawStatusOverlay(RendererState*   rs,
+                       const GameState* gs,
+                       int32            board_x,
+                       int32            board_y,
+                       int32            square_size)
+{
+    ASSERT(rs && gs);
+
+    GameResult result = EvaluatePosition(gs);
+    if (result == GAME_ONGOING) return;
+
+    const uint8* msg = nullptr;
+    if (result == GAME_WHITE_WINS)
+        msg = (const uint8*)"CHECKMATE - WHITE WINS";
+    else if (result == GAME_BLACK_WINS)
+        msg = (const uint8*)"CHECKMATE - BLACK WINS";
+    else
+        msg = (const uint8*)"STALEMATE - DRAW";
+
+    // Measure text width: N chars × (5+1)*scale − scale (no trailing gap on last char).
+    int32 text_scale = 3;
+    int32 char_step  = (5 + 1) * text_scale;   // 18 px per character
+    int32 glyph_h    = 7 * text_scale;           // 21 px
+    int32 banner_pad = text_scale * 2;            // 6 px vertical padding
+
+    int32 text_len = 0;
+    for (const uint8* p = msg; *p; ++p) ++text_len;
+    int32 text_w = text_len * char_step - text_scale; // last char has no trailing gap
+
+    int32 board_px  = 8 * square_size;
+    int32 banner_h  = glyph_h + banner_pad * 2;
+    int32 banner_y  = board_y + (board_px - banner_h) / 2;
+    int32 text_x    = board_x + (board_px - text_w) / 2;
+    int32 text_y    = banner_y + banner_pad;
+
+    // Dark banner spanning the full board width.
+    DrawRect(rs, board_x, banner_y, board_px, banner_h, STATUS_BANNER_BG);
+
+    // Message text centered inside the banner.
+    DrawStatusText(rs, msg, text_x, text_y, text_scale, STATUS_TEXT_COLOR);
 }
 
 // ---------------------------------------------------------------------------

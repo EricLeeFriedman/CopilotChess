@@ -113,12 +113,233 @@ static bool TestUI_DrawBoard_LegalMoveDotOnTargetOnly(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Check highlight tests
+// ---------------------------------------------------------------------------
+
+// When the side to move (White) is in check, the top-left area of the king
+// square (e1 — rank 0, file 4) must be exactly BOARD_CHECK.
+// Position: White King e1, Black Rook e8, Black King a8 — Black's rook
+// attacks the white king along the e-file.
+// Sample point (322, 562) is in the square background above the king piece.
+static bool TestUI_CheckHighlight_KingSquareIsRed(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Clear all squares, then place only three pieces.
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs.board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs.board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // White King e1
+    gs.board.squares[7][4] = { PIECE_ROOK, COLOR_BLACK }; // Black Rook e8 (attacks e-file)
+    gs.board.squares[7][0] = { PIECE_KING, COLOR_BLACK }; // Black King a8
+    gs.side_to_move             = COLOR_WHITE;
+    gs.castling_white_kingside  = false;
+    gs.castling_white_queenside = false;
+    gs.castling_black_kingside  = false;
+    gs.castling_black_queenside = false;
+
+    // White king at e1: sq_x = file*80 = 320, sq_y = (7-0)*80 = 560.
+    // Sample (322, 562) is in the top-left corner of the square, above the king piece.
+    DrawBoard(&rs, &gs, 0, 0, 80, -1, -1, nullptr);
+
+    Pixel sample = rs.pixels[(int32)562 * rs.width + (int32)322];
+    Pixel expected = { 50, 50, 200, 0 }; // BOARD_CHECK (BGRA)
+    if (!PixelEq(sample, expected)) return false;
+
+    return true;
+}
+
+// When the side to move (White) is NOT in check, the king square (e1) must
+// retain its plain board colour (BOARD_DARK for rank 0, file 4 — even sum).
+// Position: two kings only, no attacking pieces.
+static bool TestUI_CheckHighlight_NoHighlightWhenSafe(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Clear all squares, two kings only.
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs.board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs.board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // White King e1
+    gs.board.squares[7][0] = { PIECE_KING, COLOR_BLACK }; // Black King a8
+    gs.side_to_move             = COLOR_WHITE;
+    gs.castling_white_kingside  = false;
+    gs.castling_white_queenside = false;
+    gs.castling_black_kingside  = false;
+    gs.castling_black_queenside = false;
+
+    // e1: rank 0 + file 4 = 4 (even) → BOARD_DARK.
+    // Sample (322, 562): top-left corner of e1 square (above king piece).
+    DrawBoard(&rs, &gs, 0, 0, 80, -1, -1, nullptr);
+
+    Pixel sample = rs.pixels[(int32)562 * rs.width + (int32)322];
+    Pixel dark   = { 99, 136, 181, 0 }; // BOARD_DARK (BGRA)
+    if (!PixelEq(sample, dark)) return false;
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Status overlay tests
+// ---------------------------------------------------------------------------
+
+// Helper: set up the board for White checking Black via a single rook.
+// Used to verify the check highlight for the Black king.
+// The White king square e1 (rank 0, file 4) is NOT the king in check.
+static bool TestUI_CheckHighlight_BlackKingIsRed(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Clear all squares.
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs.board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // Black King e8 (rank 7, file 4), White Rook e1 (rank 0, file 4), White King a1
+    gs.board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // Black King e8
+    gs.board.squares[0][4] = { PIECE_ROOK, COLOR_WHITE }; // White Rook e1 attacks e-file
+    gs.board.squares[0][0] = { PIECE_KING, COLOR_WHITE }; // White King a1
+    gs.side_to_move             = COLOR_BLACK;
+    gs.castling_white_kingside  = false;
+    gs.castling_white_queenside = false;
+    gs.castling_black_kingside  = false;
+    gs.castling_black_queenside = false;
+
+    // Black King e8: sq_x = 4*80 = 320, sq_y = (7-7)*80 = 0.
+    // Sample (322, 2): top-left corner of e8 square (above any piece drawing).
+    DrawBoard(&rs, &gs, 0, 0, 80, -1, -1, nullptr);
+
+    Pixel sample   = rs.pixels[(int32)2 * rs.width + (int32)322];
+    Pixel expected = { 50, 50, 200, 0 }; // BOARD_CHECK (BGRA)
+    if (!PixelEq(sample, expected)) return false;
+
+    return true;
+}
+
+// After Fool's Mate (GAME_BLACK_WINS), DrawStatusOverlay must paint the banner
+// background over the board centre.  The banner spans board_x to board_x+640
+// and is vertically centred on the board.
+// With board_x=0, board_y=0, square_size=80:
+//   board_px = 640, banner_h = 33, banner_y = (640-33)/2 = 303.
+//   Sample (50, 315) is inside the banner, left of the text (text_x >= 123).
+static bool TestUI_CheckmateOverlay_BannerVisible(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Apply Fool's Mate: 1. f3 e5  2. g4 Qh4#
+    Move m1 = {}; m1.from_rank = 1; m1.from_file = 5; m1.to_rank = 2; m1.to_file = 5;
+    ApplyMove(&gs, &m1);
+    Move m2 = {}; m2.from_rank = 6; m2.from_file = 4; m2.to_rank = 4; m2.to_file = 4;
+    ApplyMove(&gs, &m2);
+    Move m3 = {}; m3.from_rank = 1; m3.from_file = 6; m3.to_rank = 3; m3.to_file = 6;
+    ApplyMove(&gs, &m3);
+    Move m4 = {}; m4.from_rank = 7; m4.from_file = 3; m4.to_rank = 3; m4.to_file = 7;
+    ApplyMove(&gs, &m4);
+    // White is now in checkmate: GAME_BLACK_WINS.
+
+    DrawStatusOverlay(&rs, &gs, 0, 0, 80);
+
+    // Sample (50, 315): inside the banner background, left of any text.
+    Pixel sample   = rs.pixels[(int32)315 * rs.width + (int32)50];
+    Pixel expected = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(sample, expected)) return false;
+
+    return true;
+}
+
+// After a stalemate position (GAME_DRAW), DrawStatusOverlay must paint the banner.
+// White: King c6, Queen b6.  Black: King a8.  Side to move: BLACK.
+// Black has no legal moves and is not in check → GAME_DRAW.
+static bool TestUI_StalemateOverlay_BannerVisible(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs.board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs.board.squares[7][0] = { PIECE_KING,  COLOR_BLACK }; // Black King a8
+    gs.board.squares[5][2] = { PIECE_KING,  COLOR_WHITE }; // White King c6
+    gs.board.squares[5][1] = { PIECE_QUEEN, COLOR_WHITE }; // White Queen b6
+    gs.side_to_move             = COLOR_BLACK;
+    gs.castling_white_kingside  = false;
+    gs.castling_white_queenside = false;
+    gs.castling_black_kingside  = false;
+    gs.castling_black_queenside = false;
+
+    DrawStatusOverlay(&rs, &gs, 0, 0, 80);
+
+    // Banner at y=303, sample (50, 315).
+    Pixel sample   = rs.pixels[(int32)315 * rs.width + (int32)50];
+    Pixel expected = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(sample, expected)) return false;
+
+    return true;
+}
+
+// For an ongoing game, DrawStatusOverlay must be a no-op: the sample point
+// at the would-be banner location retains the clear colour.
+static bool TestUI_OngoingGame_NoOverlay(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs); // standard starting position — GAME_ONGOING
+
+    // Fill with a known background so we can verify DrawStatusOverlay is silent.
+    Pixel bg = { 40, 40, 40, 0 };
+    ClearBuffer(&rs, bg);
+
+    DrawStatusOverlay(&rs, &gs, 0, 0, 80);
+
+    // If no overlay was drawn, pixel at (50, 315) (in the would-be banner) stays bg.
+    Pixel sample = rs.pixels[(int32)315 * rs.width + (int32)50];
+    if (!PixelEq(sample, bg)) return false;
+
+    return true;
+}
+
 static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_DrawBoard_NoCrash),
     TEST_ENTRY(TestUI_DrawBoard_SelectedSquareIsHighlighted),
     TEST_ENTRY(TestUI_DrawBoard_LegalMoveDotOnTargetOnly),
+    TEST_ENTRY(TestUI_CheckHighlight_KingSquareIsRed),
+    TEST_ENTRY(TestUI_CheckHighlight_NoHighlightWhenSafe),
+    TEST_ENTRY(TestUI_CheckHighlight_BlackKingIsRed),
+    TEST_ENTRY(TestUI_CheckmateOverlay_BannerVisible),
+    TEST_ENTRY(TestUI_StalemateOverlay_BannerVisible),
+    TEST_ENTRY(TestUI_OngoingGame_NoOverlay),
 };
-
 void RunUITests(AppMemory* memory, int32* passed, int32* total)
 {
     ASSERT(memory);
