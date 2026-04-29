@@ -44,3 +44,13 @@ void DrawPromotionPicker(RendererState*   rs,
                          int8             to_rank,
                          int8             to_file,
                          Color            promoting_side);
+
+// Draw the end-game status overlay (checkmate or stalemate message) over the board.
+// Calls EvaluatePosition internally; does nothing when the game is ongoing.
+// The banner spans the full board width and is vertically centered on the board.
+// Call after DrawBoard (and DrawPromotionPicker / DrawPieceAt where applicable).
+void DrawStatusOverlay(RendererState*   rs,
+                       const GameState* gs,
+                       int32            board_x,
+                       int32            board_y,
+                       int32            square_size);
