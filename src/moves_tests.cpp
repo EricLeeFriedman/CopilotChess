@@ -1931,6 +1931,62 @@ static bool TestCastling_ApplyQueenside_Black(void)
 }
 
 // ---------------------------------------------------------------------------
+// Black kingside castling: GenerateCastlingMoves generates the move when available.
+// ---------------------------------------------------------------------------
+static bool TestCastling_BlackKingsideAvailable(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // e8
+    gs->board.squares[7][7] = { PIECE_ROOK, COLOR_BLACK }; // h8
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // e1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Black kingside castling: king from e8 (7,4) to g8 (7,6).
+    if (!FindCastlingMove(&legal, 7, 4, 7, 6)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Black queenside castling: GenerateCastlingMoves generates the move when available.
+// ---------------------------------------------------------------------------
+static bool TestCastling_BlackQueensideAvailable(void)
+{
+    Arena*     arena = &s_Memory->test_scratch;
+    ArenaReset(arena);
+
+    GameState* gs = ArenaPushType(arena, GameState);
+    InitGameState(gs);
+
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs->board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    gs->board.squares[7][4] = { PIECE_KING, COLOR_BLACK }; // e8
+    gs->board.squares[7][0] = { PIECE_ROOK, COLOR_BLACK }; // a8
+    gs->board.squares[0][4] = { PIECE_KING, COLOR_WHITE }; // e1 (non-interfering)
+    gs->side_to_move = COLOR_BLACK;
+
+    MoveList legal = {};
+    GetLegalMoves(gs, &legal);
+
+    // Black queenside castling: king from e8 (7,4) to c8 (7,2).
+    if (!FindCastlingMove(&legal, 7, 4, 7, 2)) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Black en passant: ApplyMove removes the White pawn that was jumped over.
 // ---------------------------------------------------------------------------
 static bool TestPawn_ApplyEnPassant_Black(void)
@@ -2285,6 +2341,8 @@ static const TestEntry k_MovesTests[] = {
     TEST_ENTRY(TestApplyMove_TurnAlternates),
     TEST_ENTRY(TestCastling_ApplyKingside_Black),
     TEST_ENTRY(TestCastling_ApplyQueenside_Black),
+    TEST_ENTRY(TestCastling_BlackKingsideAvailable),
+    TEST_ENTRY(TestCastling_BlackQueensideAvailable),
     TEST_ENTRY(TestPawn_ApplyEnPassant_Black),
     TEST_ENTRY(TestPawn_ApplyPromotion_Black_Queen),
     TEST_ENTRY(TestPawn_ApplyPromotion_Black_Rook),
