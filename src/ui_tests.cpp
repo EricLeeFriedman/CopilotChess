@@ -329,6 +329,60 @@ static bool TestUI_OngoingGame_NoOverlay(void)
     return true;
 }
 
+// After a White-wins checkmate (GAME_WHITE_WINS), DrawStatusOverlay must:
+//   1. Paint the dark banner over the board centre.
+//   2. Render the correct "CHECKMATE - WHITE WINS" glyph, not "BLACK WINS".
+// Position: White King f6, White Queen g7, Black King h8 — side to move BLACK.
+//   Black King h8 is in check from the Queen (diagonal) and has no legal escapes
+//   (g8/h7 attacked by queen, g7 defended by White King) → GAME_WHITE_WINS.
+//
+// Banner geometry with board_x=0, board_y=0, square_size=80:
+//   board_px=640, banner_h=33, banner_y=303, text_y=309.
+//   "CHECKMATE - WHITE WINS" (22 chars): text_w=393, text_x=123.
+//   First glyph 'C' row 1 (mask=16=0b10000): col 0 set at scale 3
+//   → text pixel at (123, 312) must be STATUS_TEXT_COLOR.
+static bool TestUI_CheckmateOverlay_WhiteWins_BannerAndTextPixel(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 640, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Clear all squares.
+    for (int32 r = 0; r < 8; ++r)
+        for (int32 f = 0; f < 8; ++f)
+            gs.board.squares[r][f] = { PIECE_NONE, COLOR_NONE };
+
+    // White King f6 (rank 5, file 5), White Queen g7 (rank 6, file 6),
+    // Black King h8 (rank 7, file 7).
+    gs.board.squares[5][5] = { PIECE_KING,  COLOR_WHITE }; // White King f6
+    gs.board.squares[6][6] = { PIECE_QUEEN, COLOR_WHITE }; // White Queen g7
+    gs.board.squares[7][7] = { PIECE_KING,  COLOR_BLACK }; // Black King h8
+    gs.side_to_move             = COLOR_BLACK;
+    gs.castling_white_kingside  = false;
+    gs.castling_white_queenside = false;
+    gs.castling_black_kingside  = false;
+    gs.castling_black_queenside = false;
+
+    DrawStatusOverlay(&rs, &gs, 0, 0, 80);
+
+    // 1. Banner background at (50, 315) — left of text, inside banner.
+    Pixel banner_px = rs.pixels[(int32)315 * rs.width + (int32)50];
+    Pixel banner_bg = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(banner_px, banner_bg)) return false;
+
+    // 2. Text pixel from first glyph 'C':
+    //    row 1 of k_C = 16 = 0b10000 → col 0 set.
+    //    x = text_x + 0*scale = 123, y = text_y + 1*scale = 309 + 3 = 312.
+    Pixel text_px    = rs.pixels[(int32)312 * rs.width + (int32)123];
+    Pixel text_color = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR (BGRA)
+    if (!PixelEq(text_px, text_color)) return false;
+
+    return true;
+}
+
 static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_DrawBoard_NoCrash),
     TEST_ENTRY(TestUI_DrawBoard_SelectedSquareIsHighlighted),
@@ -339,6 +393,7 @@ static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_CheckmateOverlay_BannerVisible),
     TEST_ENTRY(TestUI_StalemateOverlay_BannerVisible),
     TEST_ENTRY(TestUI_OngoingGame_NoOverlay),
+    TEST_ENTRY(TestUI_CheckmateOverlay_WhiteWins_BannerAndTextPixel),
 };
 void RunUITests(AppMemory* memory, int32* passed, int32* total)
 {
