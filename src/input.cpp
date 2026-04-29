@@ -65,6 +65,13 @@ void InputCancelDrag(InputState* input)
     input->promo_to_file     = -1;
 }
 
+void InputRestart(InputState* input, GameState* gs)
+{
+    ASSERT(input && gs);
+    InputCancelDrag(input);
+    InitGameState(gs);
+}
+
 // Populate input->legal_moves with only the moves that originate from
 // (rank, file) in the full legal move list for gs->side_to_move.
 static void CacheLegalMovesForSquare(InputState* input, const GameState* gs,

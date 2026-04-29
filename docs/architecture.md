@@ -81,6 +81,17 @@ Indexing convention: `squares[rank][file]` where rank 0 is White's back rank (ra
 
 `InitBoard(Board*)` sets up the standard starting position. The caller is responsible for pushing a `Board` from the `game_state` arena before calling it.
 
+#### Game Restart Flow
+
+`InputRestart(InputState* input, GameState* gs)` (declared in `src/input.h`, implemented in `src/input.cpp`) is the single entry point for resetting a finished or in-progress game:
+
+1. `InputCancelDrag(input)` — clears any active drag or pending promotion before touching game state, so no stale cursor or move-list data survives the reset.
+2. `InitGameState(gs)` — resets the board to the standard starting position, sets `side_to_move` to `COLOR_WHITE`, clears en-passant targets, and restores all four castling rights.
+
+`InputRestart` is safe to call at any point, including during an active drag or while a promotion picker is visible.  The caller (`src/main.cpp`) additionally resets the `game_state` and `input` arena offsets to zero via `ArenaReset` before calling `InputRestart`; no re-allocation is needed because both `g_GameState` and `g_InputState` were pushed from offset 0 of their respective arenas at startup and remain valid after the reset.
+
+The platform layer (`src/main.cpp`) tracks the current result in `g_GameResult` (a `GameResult` value evaluated every render frame via `EvaluatePosition`).  When `g_GameResult != GAME_ONGOING`, `WM_LBUTTONDOWN` is rerouted exclusively to the restart-button hit test; normal drag and promotion handling are suppressed until the restart occurs.
+
 ### Chess Rules
 
 Own legal move generation, check detection, checkmate detection, and any supporting rule validation.
@@ -261,7 +272,7 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 
 `DrawBoard(rs, gs, board_x, board_y, square_size, selected_rank, selected_file, legal_moves, hide_rank, hide_file)` draws the complete board view into the renderer's pixel buffer in two passes:
 
-1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). Highlighted squares (selected piece and valid-move targets) are tinted green. Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
+1. **Square pass** — draws all 64 squares with alternating light/dark colours (chess.com palette: `#F0D9B5` light, `#B58863` dark). When the side to move is in check, the king's square is tinted red (`BOARD_CHECK`) before any other overlay is applied. Selected-piece and valid-move-target squares are tinted green (and may override the check tint for that specific square when the king is selected). Valid-move targets additionally display a small dot (empty squares) or a corner ring (occupied squares).
 
 2. **Piece pass** — calls the internal `DrawPiece` for every non-empty square, except the square identified by `hide_rank`/`hide_file` (used during drag so the piece renders only at the cursor rather than on the board). Piece icons are drawn procedurally using `DrawRect` and `DrawFilledCircle` with shapes scaled proportionally to `square_size`. White pieces use a near-white fill with a dark outline; black pieces use a near-black fill with a light outline. Each piece type has a distinct silhouette:
 
@@ -277,6 +288,26 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 `DrawPieceAt(rs, type, color, center_x, center_y, sq_size)` renders a single piece centered at an arbitrary pixel position.  Called by the render loop to draw the floating piece under the cursor during a drag.
 
 `DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` overlays four golden-highlighted squares at the promotion file (Queen, Rook, Bishop, Knight in slot order) so the player can click to choose a promotion piece.
+
+`DrawStatusOverlay(rs, gs, board_x, board_y, square_size)` draws the end-game status message over the board when the game is no longer ongoing.  It calls `EvaluatePosition` internally each frame and does nothing when the result is `GAME_ONGOING`.  For a decisive or drawn result it renders:
+
+- A dark full-width banner rectangle vertically centred on the board.
+- A message rendered in near-white pixel glyphs from a built-in 5×7 bitmap font (scale 3×):
+  - `GAME_WHITE_WINS` → `"CHECKMATE - WHITE WINS"`
+  - `GAME_BLACK_WINS` → `"CHECKMATE - BLACK WINS"`
+  - `GAME_DRAW`       → `"STALEMATE - DRAW"`
+
+The font is implemented entirely via `DrawRect` calls — no GDI text functions are used.  Only the uppercase Latin letters required by the status and turn-indicator strings plus space and hyphen are defined; all other characters render as blank glyphs.  `DrawStatusOverlay` is available as a standalone function but is **not** called by the game-over render path; the full result message is rendered directly inside `DrawGameOverOverlay`.
+
+`DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a self-contained end-game panel centered on the board.  The panel consists of:
+
+- A dark background rectangle with a light-gray border.
+- A result strip (top 60 px of the panel) coloured near-white for a White win, dark gray for a Black win, or mid-gray for a draw, with a king-piece icon identifying the winning side (both kings shown for a draw) **and** the result message text rendered at scale 2 inside the strip.  Text color is dark on the near-white strip and near-white on the dark/mid-gray strips.
+- A green restart button (lower portion of the panel) with a ring icon.  Its pixel bounds are the same values returned by `IsRestartButtonHit`.
+
+`IsRestartButtonHit(px, py, board_x, board_y, square_size)` returns `true` when `(px, py)` falls within the restart button drawn by `DrawGameOverOverlay`.  The button is computed relative to the board layout constants so it scales correctly if `square_size` changes.  With the standard layout (`board_x=320`, `board_y=40`, `square_size=80`) the button occupies pixel rows 360–419 and pixel columns 500–779.
+
+`DrawTurnIndicator(rs, side_to_move, board_x, board_y, square_size)` renders a "WHITE TO MOVE" or "BLACK TO MOVE" label in the gap below the board.  The label is centred horizontally over the board width in a dark background strip.  It is called only when the game is ongoing; the game-over overlay takes its place when a result has been decided.  The strip is positioned symmetrically: its vertical centre sits at `board_y + 8*square_size + board_y/2` (matching the top gap above the board).
 
 The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 

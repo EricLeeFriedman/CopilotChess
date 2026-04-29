@@ -12,12 +12,108 @@ static const Pixel BOARD_LIGHT    = { 181, 217, 240, 0 };  // #F0D9B5 light squa
 static const Pixel BOARD_DARK     = {  99, 136, 181, 0 };  // #B58863 dark square
 static const Pixel BOARD_SELECTED = { 105, 151, 130, 0 };  // green tint – selected square
 static const Pixel BOARD_MOVE_DOT = {  64, 111, 100, 0 };  // darker green – valid-move indicator
+static const Pixel BOARD_CHECK    = {  50,  50, 200, 0 };  // red tint – king square when in check
+
+// Status overlay colours
+static const Pixel STATUS_BANNER_BG  = {  20,  20,  20, 0 };  // very dark banner background
+static const Pixel STATUS_TEXT_COLOR = { 220, 220, 220, 0 };  // near-white message text
 
 // Piece body colours
 static const Pixel PIECE_W_FILL   = { 230, 245, 245, 0 };  // near-white piece fill
 static const Pixel PIECE_W_BORDER = {  60,  60,  60, 0 };  // dark outline for white pieces
 static const Pixel PIECE_B_FILL   = {  40,  40,  40, 0 };  // near-black piece fill
 static const Pixel PIECE_B_BORDER = { 200, 200, 200, 0 };  // light outline for black pieces
+
+// ---------------------------------------------------------------------------
+// Minimal 5×7 pixel font for in-game status messages.
+// Each glyph is 7 bytes; each byte is a 5-bit row mask (bit 4 = leftmost pixel).
+// Only the characters needed for status strings are defined.
+// ---------------------------------------------------------------------------
+
+struct Glyph5x7
+{
+    uint8 rows[7];
+};
+
+// Returns a pointer to the 5×7 glyph for the given ASCII character.
+// Returns a pointer to a blank glyph for characters without a definition.
+static const Glyph5x7* GetGlyph(uint8 ch)
+{
+    static const Glyph5x7 k_Blank = {{ 0, 0, 0, 0, 0, 0, 0 }};
+
+    static const Glyph5x7 k_Space  = {{ 0,  0,  0,  0,  0,  0,  0  }};
+    static const Glyph5x7 k_Hyphen = {{ 0,  0,  0,  31, 0,  0,  0  }};
+    static const Glyph5x7 k_A = {{ 14, 17, 17, 31, 17, 17, 17 }};
+    static const Glyph5x7 k_B = {{ 30, 17, 17, 30, 17, 17, 30 }};
+    static const Glyph5x7 k_C = {{ 14, 16, 16, 16, 16, 16, 14 }};
+    static const Glyph5x7 k_D = {{ 30, 17, 17, 17, 17, 17, 30 }};
+    static const Glyph5x7 k_E = {{ 31, 16, 16, 30, 16, 16, 31 }};
+    static const Glyph5x7 k_H = {{ 17, 17, 17, 31, 17, 17, 17 }};
+    static const Glyph5x7 k_I = {{ 31,  4,  4,  4,  4,  4, 31 }};
+    static const Glyph5x7 k_K = {{ 17, 18, 20, 24, 20, 18, 17 }};
+    static const Glyph5x7 k_L = {{ 16, 16, 16, 16, 16, 16, 31 }};
+    static const Glyph5x7 k_M = {{ 17, 27, 21, 17, 17, 17, 17 }};
+    static const Glyph5x7 k_N = {{ 17, 25, 21, 19, 17, 17, 17 }};
+    static const Glyph5x7 k_R = {{ 30, 17, 17, 30, 20, 18, 17 }};
+    static const Glyph5x7 k_S = {{ 14, 16, 16, 14,  1,  1, 14 }};
+    static const Glyph5x7 k_T = {{ 31,  4,  4,  4,  4,  4,  4 }};
+    static const Glyph5x7 k_O = {{ 14, 17, 17, 17, 17, 17, 14 }};
+    static const Glyph5x7 k_V = {{ 17, 17, 17, 17, 10, 10,  4 }};
+    static const Glyph5x7 k_W = {{ 17, 17, 17, 21, 21, 27, 17 }};
+
+    switch (ch)
+    {
+        case ' ':  return &k_Space;
+        case '-':  return &k_Hyphen;
+        case 'A':  return &k_A;
+        case 'B':  return &k_B;
+        case 'C':  return &k_C;
+        case 'D':  return &k_D;
+        case 'E':  return &k_E;
+        case 'H':  return &k_H;
+        case 'I':  return &k_I;
+        case 'K':  return &k_K;
+        case 'L':  return &k_L;
+        case 'M':  return &k_M;
+        case 'N':  return &k_N;
+        case 'O':  return &k_O;
+        case 'R':  return &k_R;
+        case 'S':  return &k_S;
+        case 'T':  return &k_T;
+        case 'V':  return &k_V;
+        case 'W':  return &k_W;
+        default:   return &k_Blank;
+    }
+}
+
+// Draw one 5×7 glyph at pixel (x, y) with each pixel scaled to scale×scale.
+static void DrawGlyph(RendererState* rs, int32 x, int32 y, int32 scale,
+                      const Glyph5x7* g, Pixel color)
+{
+    for (int32 row = 0; row < 7; ++row)
+    {
+        uint8 mask = g->rows[row];
+        for (int32 col = 0; col < 5; ++col)
+        {
+            if ((mask >> (4 - col)) & 1)
+                DrawRect(rs, x + col * scale, y + row * scale, scale, scale, color);
+        }
+    }
+}
+
+// Draw a null-terminated ASCII string starting at pixel (x, y).
+// Characters are rendered at the given scale; each character advances by (5+1)*scale px.
+static void DrawStatusText(RendererState* rs, const uint8* text,
+                           int32 x, int32 y, int32 scale, Pixel color)
+{
+    int32 char_step = (5 + 1) * scale;
+    int32 cx = x;
+    for (const uint8* p = text; *p; ++p)
+    {
+        DrawGlyph(rs, cx, y, scale, GetGlyph(*p), color);
+        cx += char_step;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -242,6 +338,9 @@ void DrawBoard(RendererState*   rs,
 {
     ASSERT(rs && gs);
 
+    // Determine once whether the side to move is in check (used for king highlight).
+    bool in_check = IsInCheck(&gs->board, gs->side_to_move);
+
     // -----------------------------------------------------------------------
     // Pass 1: draw the 64 squares
     // -----------------------------------------------------------------------
@@ -259,7 +358,16 @@ void DrawBoard(RendererState*   rs,
             bool  is_light = ((rank + file) & 1) != 0;
             Pixel sq_color = is_light ? BOARD_LIGHT : BOARD_DARK;
 
-            // Overlay: selected square or valid-move target
+            // Check highlight: king square of the side to move when in check.
+            // Applied before the selection overlay so the selection can override it.
+            if (in_check)
+            {
+                const Square& sq = gs->board.squares[rank][file];
+                if (sq.piece == PIECE_KING && sq.color == gs->side_to_move)
+                    sq_color = BOARD_CHECK;
+            }
+
+            // Overlay: selected square or valid-move target (overrides check highlight)
             if (rank == selected_rank && file == selected_file)
             {
                 sq_color = BOARD_SELECTED;
@@ -336,6 +444,52 @@ void DrawPieceAt(RendererState* rs,
 }
 
 // ---------------------------------------------------------------------------
+// Status overlay: checkmate and stalemate end-game messages.
+// ---------------------------------------------------------------------------
+
+void DrawStatusOverlay(RendererState*   rs,
+                       const GameState* gs,
+                       int32            board_x,
+                       int32            board_y,
+                       int32            square_size)
+{
+    ASSERT(rs && gs);
+
+    GameResult result = EvaluatePosition(gs);
+    if (result == GAME_ONGOING) return;
+
+    const uint8* msg = nullptr;
+    if (result == GAME_WHITE_WINS)
+        msg = (const uint8*)"CHECKMATE - WHITE WINS";
+    else if (result == GAME_BLACK_WINS)
+        msg = (const uint8*)"CHECKMATE - BLACK WINS";
+    else
+        msg = (const uint8*)"STALEMATE - DRAW";
+
+    // Measure text width: N chars × (5+1)*scale − scale (no trailing gap on last char).
+    int32 text_scale = 3;
+    int32 char_step  = (5 + 1) * text_scale;   // 18 px per character
+    int32 glyph_h    = 7 * text_scale;           // 21 px
+    int32 banner_pad = text_scale * 2;            // 6 px vertical padding
+
+    int32 text_len = 0;
+    for (const uint8* p = msg; *p; ++p) ++text_len;
+    int32 text_w = text_len * char_step - text_scale; // last char has no trailing gap
+
+    int32 board_px  = 8 * square_size;
+    int32 banner_h  = glyph_h + banner_pad * 2;
+    int32 banner_y  = board_y + (board_px - banner_h) / 2;
+    int32 text_x    = board_x + (board_px - text_w) / 2;
+    int32 text_y    = banner_y + banner_pad;
+
+    // Dark banner spanning the full board width.
+    DrawRect(rs, board_x, banner_y, board_px, banner_h, STATUS_BANNER_BG);
+
+    // Message text centered inside the banner.
+    DrawStatusText(rs, msg, text_x, text_y, text_scale, STATUS_TEXT_COLOR);
+}
+
+// ---------------------------------------------------------------------------
 // Promotion picker
 // ---------------------------------------------------------------------------
 
@@ -371,4 +525,191 @@ void DrawPromotionPicker(RendererState*   rs,
         DrawRect(rs, sq_x, sq_y, square_size, square_size, BOARD_PROMO_PICK);
         DrawPiece(rs, sq_x, sq_y, square_size, k_PickerPieces[i], promoting_side);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Game-over overlay
+// ---------------------------------------------------------------------------
+
+// Layout of the game-over panel, expressed as fractions of the 8-square board.
+// The panel is centered inside the board area.
+static const int32 OVERLAY_W  = 320;  // panel width  (4 squares)
+static const int32 OVERLAY_H  = 160;  // panel height (2 squares)
+static const int32 RESULT_H   =  60;  // result-strip height inside the panel
+static const int32 BTN_MARGIN =  20;  // inset of the restart button from the panel edges
+static const int32 BTN_H      =  60;  // restart button height
+
+// Panel colours.
+static const Pixel OVERLAY_BG       = {  20,  20,  20, 0 };  // near-black background
+static const Pixel OVERLAY_BORDER   = { 180, 180, 180, 0 };  // light-gray border
+
+static const Pixel RESULT_WHITE_COL = { 220, 235, 235, 0 };  // near-white  — White wins
+static const Pixel RESULT_BLACK_COL = {  50,  50,  50, 0 };  // dark gray   — Black wins
+static const Pixel RESULT_DRAW_COL  = { 120, 120, 120, 0 };  // mid-gray    — draw
+
+static const Pixel BTN_FILL         = {  50, 180,  50, 0 };  // green restart button
+static const Pixel BTN_BORDER_COLOR = { 200, 240, 200, 0 };  // light-green button border
+
+// Derive the top-left pixel of the overlay panel, centered on the board.
+static inline void GetOverlayTopLeft(int32 board_x, int32 board_y, int32 square_size,
+                                     int32* ox, int32* oy)
+{
+    int32 board_px = square_size * 8;
+    *ox = board_x + (board_px - OVERLAY_W) / 2;
+    *oy = board_y + (board_px - OVERLAY_H) / 2;
+}
+
+// Derive the pixel rect of the restart button.
+static inline void GetRestartButtonRect(int32 board_x, int32 board_y, int32 square_size,
+                                        int32* bx, int32* by, int32* bw, int32* bh)
+{
+    int32 ox, oy;
+    GetOverlayTopLeft(board_x, board_y, square_size, &ox, &oy);
+    *bx = ox + BTN_MARGIN;
+    *by = oy + RESULT_H + BTN_MARGIN;
+    *bw = OVERLAY_W - BTN_MARGIN * 2;
+    *bh = BTN_H;
+}
+
+void DrawGameOverOverlay(RendererState*   rs,
+                         GameResult       result,
+                         int32            board_x,
+                         int32            board_y,
+                         int32            square_size)
+{
+    ASSERT(rs);
+
+    int32 ox, oy;
+    GetOverlayTopLeft(board_x, board_y, square_size, &ox, &oy);
+
+    // Outer border then dark background.
+    DrawRect(rs, ox - 2, oy - 2, OVERLAY_W + 4, OVERLAY_H + 4, OVERLAY_BORDER);
+    DrawRect(rs, ox, oy, OVERLAY_W, OVERLAY_H, OVERLAY_BG);
+
+    // Result strip: colour indicates who won.
+    Pixel result_color;
+    Color winner_color;
+    switch (result)
+    {
+        case GAME_WHITE_WINS:
+            result_color = RESULT_WHITE_COL;
+            winner_color = COLOR_WHITE;
+            break;
+        case GAME_BLACK_WINS:
+            result_color = RESULT_BLACK_COL;
+            winner_color = COLOR_BLACK;
+            break;
+        default: // GAME_DRAW
+            result_color = RESULT_DRAW_COL;
+            winner_color = COLOR_NONE;
+            break;
+    }
+    DrawRect(rs, ox, oy, OVERLAY_W, RESULT_H, result_color);
+
+    // Draw a king icon centred in the result strip to hint at the winner.
+    // For a draw, draw both kings on the left and right sides of the strip.
+    int32 icon_size = RESULT_H;
+
+    if (winner_color != COLOR_NONE)
+    {
+        int32 sq_x = ox + (OVERLAY_W - icon_size) / 2;
+        DrawPiece(rs, sq_x, oy, icon_size, PIECE_KING, winner_color);
+    }
+    else
+    {
+        DrawPiece(rs, ox,                           oy, icon_size, PIECE_KING, COLOR_WHITE);
+        DrawPiece(rs, ox + OVERLAY_W - icon_size,   oy, icon_size, PIECE_KING, COLOR_BLACK);
+    }
+
+    // Render the result message text inside the result strip at scale 2.
+    // Text color contrasts with the strip: dark on a light strip, light on dark/mid.
+    {
+        const uint8* msg;
+        Pixel msg_color;
+        if (result == GAME_WHITE_WINS)
+        {
+            msg       = (const uint8*)"CHECKMATE - WHITE WINS";
+            msg_color = OVERLAY_BG;
+        }
+        else if (result == GAME_BLACK_WINS)
+        {
+            msg       = (const uint8*)"CHECKMATE - BLACK WINS";
+            msg_color = STATUS_TEXT_COLOR;
+        }
+        else
+        {
+            msg       = (const uint8*)"STALEMATE - DRAW";
+            msg_color = STATUS_TEXT_COLOR;
+        }
+
+        int32 text_scale = 2;
+        int32 char_step  = (5 + 1) * text_scale;  // 12 px per character
+        int32 glyph_h2   = 7 * text_scale;         // 14 px
+
+        int32 msg_len = 0;
+        for (const uint8* p = msg; *p; ++p) ++msg_len;
+        int32 msg_w = msg_len * char_step - text_scale;
+
+        int32 msg_x = ox + (OVERLAY_W - msg_w) / 2;
+        int32 msg_y = oy + (RESULT_H - glyph_h2) / 2;
+
+        DrawStatusText(rs, msg, msg_x, msg_y, text_scale, msg_color);
+    }
+
+    // Restart button: green rectangle.
+    int32 bx, by, bw, bh;
+    GetRestartButtonRect(board_x, board_y, square_size, &bx, &by, &bw, &bh);
+    DrawRect(rs, bx - 2, by - 2, bw + 4, bh + 4, BTN_BORDER_COLOR);
+    DrawRect(rs, bx, by, bw, bh, BTN_FILL);
+
+    // Draw a ring icon inside the button as a simple "refresh" indicator.
+    int32 btn_cx = bx + bw / 2;
+    int32 btn_cy = by + bh / 2;
+    int32 icon_r = bh * 28 / 100;
+    DrawFilledCircle(rs, btn_cx, btn_cy, icon_r + 3, BTN_BORDER_COLOR);
+    DrawFilledCircle(rs, btn_cx, btn_cy, icon_r,     BTN_FILL);
+    int32 inner_r = icon_r * 55 / 100;
+    DrawFilledCircle(rs, btn_cx, btn_cy, inner_r, BTN_FILL);
+}
+
+bool IsRestartButtonHit(int32 px, int32 py,
+                        int32 board_x, int32 board_y, int32 square_size)
+{
+    int32 bx, by, bw, bh;
+    GetRestartButtonRect(board_x, board_y, square_size, &bx, &by, &bw, &bh);
+    return px >= bx && px < bx + bw && py >= by && py < by + bh;
+}
+
+// ---------------------------------------------------------------------------
+// Turn indicator
+// ---------------------------------------------------------------------------
+
+void DrawTurnIndicator(RendererState* rs, Color side_to_move,
+                       int32 board_x, int32 board_y, int32 square_size)
+{
+    ASSERT(rs);
+
+    const uint8* msg = (side_to_move == COLOR_WHITE)
+                       ? (const uint8*)"WHITE TO MOVE"
+                       : (const uint8*)"BLACK TO MOVE";
+
+    int32 text_scale = 2;
+    int32 char_step  = (5 + 1) * text_scale;  // 12 px per character
+    int32 glyph_h    = 7 * text_scale;         // 14 px
+    int32 pad        = text_scale * 2;         // 4 px vertical padding
+
+    int32 text_len = 0;
+    for (const uint8* p = msg; *p; ++p) ++text_len;
+    int32 text_w = text_len * char_step - text_scale;
+
+    int32 board_px = 8 * square_size;
+    int32 bar_h    = glyph_h + pad * 2;
+    // Centre the bar in the gap below the board.  The gap equals board_y for
+    // the symmetric 1280x720 layout (board_y pixels above and below).
+    int32 bar_y    = board_y + board_px + (board_y - bar_h) / 2;
+    int32 text_x   = board_x + (board_px - text_w) / 2;
+    int32 text_y   = bar_y + pad;
+
+    DrawRect(rs, board_x, bar_y, board_px, bar_h, STATUS_BANNER_BG);
+    DrawStatusText(rs, msg, text_x, text_y, text_scale, STATUS_TEXT_COLOR);
 }

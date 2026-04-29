@@ -11,6 +11,7 @@ static AppMemory     g_Memory;
 static RendererState g_Renderer;
 static GameState*    g_GameState;
 static InputState*   g_InputState;
+static GameResult    g_GameResult = GAME_ONGOING;
 
 // Board layout constants — shared between the render loop and WindowProc.
 static const int32 BOARD_SQUARE_SIZE = 80;
@@ -103,6 +104,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
 
         if (!running) break;
 
+        g_GameResult = EvaluatePosition(g_GameState);
+
         Pixel bg = { 40, 40, 40, 0 };
         ClearBuffer(&g_Renderer, bg);
 
@@ -146,6 +149,17 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine
                       -1, -1, nullptr);
         }
 
+        if (g_GameResult != GAME_ONGOING)
+        {
+            DrawGameOverOverlay(&g_Renderer, g_GameResult,
+                                BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+        }
+        else
+        {
+            DrawTurnIndicator(&g_Renderer, g_GameState->side_to_move,
+                              BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);
+        }
+
         PresentFrame(&g_Renderer, window);
     }
 
@@ -167,7 +181,22 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
             // correctly sign-extend coordinates that extend off the client area.
             int32 px = (int32)(int16)LOWORD(lparam);
             int32 py = (int32)(int16)HIWORD(lparam);
-            if (g_InputState->pending_promotion)
+
+            // Query EvaluatePosition directly so the gate always reflects the
+            // current GameState, not the cached g_GameResult which is only
+            // refreshed at the top of the next render frame.
+            if (EvaluatePosition(g_GameState) != GAME_ONGOING)
+            {
+                // Game over: only the restart button is active.
+                if (IsRestartButtonHit(px, py, BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE))
+                {
+                    ArenaReset(&g_Memory.game_state);
+                    ArenaReset(&g_Memory.input);
+                    InputRestart(g_InputState, g_GameState);
+                    g_GameResult = GAME_ONGOING; // sync cache immediately
+                }
+            }
+            else if (g_InputState->pending_promotion)
                 InputHandlePromotionClick(g_InputState, g_GameState,
                                           px, py,
                                           BOARD_X, BOARD_Y, BOARD_SQUARE_SIZE);

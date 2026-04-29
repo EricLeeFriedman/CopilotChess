@@ -73,3 +73,9 @@ bool InputHandlePromotionClick(InputState* input, GameState* gs,
 // Cancel any active drag or pending promotion (call on WM_RBUTTONDOWN or
 // focus loss).
 void InputCancelDrag(InputState* input);
+
+// Reset both the input state and the game state for a new game.
+// Safe to call at any point, including during an active drag or pending
+// promotion — the input sub-state is cleared before the game state is reset.
+// Arena resets (if needed) are the caller's responsibility.
+void InputRestart(InputState* input, GameState* gs);
