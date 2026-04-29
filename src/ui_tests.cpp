@@ -548,6 +548,85 @@ static bool TestUI_DrawGameOverOverlay_Draw_PixelAssertion(void)
 }
 
 
+// ---------------------------------------------------------------------------
+// Turn indicator tests
+// ---------------------------------------------------------------------------
+
+// DrawTurnIndicator with COLOR_WHITE must render the dark background bar and a
+// pixel corresponding to 'W' (distinguishing it from "BLACK TO MOVE").
+//
+// Layout: board_x=0, board_y=40, square_size=80.
+//   board_px=640; text_scale=2; glyph_h=14; pad=4; bar_h=22.
+//   bar_y = 40 + 640 + (40 - 22) / 2 = 689.
+//   text_y = 689 + 4 = 693.
+//   "WHITE TO MOVE" (13 chars): text_w = 13*12 - 2 = 154.
+//   text_x = (640 - 154) / 2 = 243.
+//
+//   k_W row 0 = 17 = 0b10001:  col 0 set → (243, 693); col 4 set → (251, 693).
+//   k_B row 0 = 30 = 0b11110:  col 4 NOT set → (251, 693) is blank for "BLACK TO MOVE".
+//   So pixel (251, 693) = text_color for WHITE, background for BLACK.
+static bool TestUI_TurnIndicator_White_TextPixel(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 720, &rs)) return false;
+
+    Pixel bg = { 40, 40, 40, 0 };
+    ClearBuffer(&rs, bg);
+
+    DrawTurnIndicator(&rs, COLOR_WHITE, 0, 40, 80);
+
+    // Background bar at (0, 689) must be STATUS_BANNER_BG.
+    Pixel bar_px  = rs.pixels[(int32)689 * rs.width + (int32)0];
+    Pixel bar_col = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(bar_px, bar_col)) return false;
+
+    // 'W' col 4 of row 0 = bit 0 of 17 = 1 → pixel at (251, 693) = text_color.
+    Pixel text_px  = rs.pixels[(int32)693 * rs.width + (int32)251];
+    Pixel text_col = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR (BGRA)
+    if (!PixelEq(text_px, text_col)) return false;
+
+    // 'W' col 1 of row 0 = bit 3 of 17 = 0 → pixel at (245, 693) must NOT be text_color.
+    Pixel no_px = rs.pixels[(int32)693 * rs.width + (int32)245];
+    if (PixelEq(no_px, text_col)) return false;
+
+    return true;
+}
+
+// DrawTurnIndicator with COLOR_BLACK must render the dark background bar and a
+// pixel corresponding to 'B' (distinguishing it from "WHITE TO MOVE").
+//
+// k_B row 0 = 30 = 0b11110:  col 1 set → (245, 693) = text_color.
+// k_W row 0 = 17 = 0b10001:  col 1 NOT set → (245, 693) is blank for "WHITE TO MOVE".
+static bool TestUI_TurnIndicator_Black_TextPixel(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    if (!MakeRenderer(640, 720, &rs)) return false;
+
+    Pixel bg = { 40, 40, 40, 0 };
+    ClearBuffer(&rs, bg);
+
+    DrawTurnIndicator(&rs, COLOR_BLACK, 0, 40, 80);
+
+    // Background bar at (0, 689) must be STATUS_BANNER_BG.
+    Pixel bar_px  = rs.pixels[(int32)689 * rs.width + (int32)0];
+    Pixel bar_col = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(bar_px, bar_col)) return false;
+
+    // 'B' col 1 of row 0 = bit 3 of 30 = 1 → pixel at (245, 693) = text_color.
+    Pixel text_px  = rs.pixels[(int32)693 * rs.width + (int32)245];
+    Pixel text_col = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR (BGRA)
+    if (!PixelEq(text_px, text_col)) return false;
+
+    // 'B' col 4 of row 0 = bit 0 of 30 = 0 → pixel at (251, 693) must NOT be text_color.
+    Pixel no_px = rs.pixels[(int32)693 * rs.width + (int32)251];
+    if (PixelEq(no_px, text_col)) return false;
+
+    return true;
+}
+
+
 static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_DrawBoard_NoCrash),
     TEST_ENTRY(TestUI_DrawBoard_SelectedSquareIsHighlighted),
@@ -564,6 +643,8 @@ static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_DrawGameOverOverlay_Draw_PixelAssertion),
     TEST_ENTRY(TestUI_IsRestartButtonHit_InsideButton),
     TEST_ENTRY(TestUI_IsRestartButtonHit_OutsideButton),
+    TEST_ENTRY(TestUI_TurnIndicator_White_TextPixel),
+    TEST_ENTRY(TestUI_TurnIndicator_Black_TextPixel),
 };
 void RunUITests(AppMemory* memory, int32* passed, int32* total)
 {

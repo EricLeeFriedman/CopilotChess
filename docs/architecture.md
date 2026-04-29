@@ -297,7 +297,7 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
   - `GAME_BLACK_WINS` → `"CHECKMATE - BLACK WINS"`
   - `GAME_DRAW`       → `"STALEMATE - DRAW"`
 
-The font is implemented entirely via `DrawRect` calls — no GDI text functions are used.  Only the uppercase Latin letters required by the three status strings plus space and hyphen are defined; all other characters render as blank glyphs.  `DrawStatusOverlay` is available as a standalone function but is **not** called by the game-over render path; the full result message is rendered directly inside `DrawGameOverOverlay`.
+The font is implemented entirely via `DrawRect` calls — no GDI text functions are used.  Only the uppercase Latin letters required by the status and turn-indicator strings plus space and hyphen are defined; all other characters render as blank glyphs.  `DrawStatusOverlay` is available as a standalone function but is **not** called by the game-over render path; the full result message is rendered directly inside `DrawGameOverOverlay`.
 
 `DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a self-contained end-game panel centered on the board.  The panel consists of:
 
@@ -306,6 +306,8 @@ The font is implemented entirely via `DrawRect` calls — no GDI text functions 
 - A green restart button (lower portion of the panel) with a ring icon.  Its pixel bounds are the same values returned by `IsRestartButtonHit`.
 
 `IsRestartButtonHit(px, py, board_x, board_y, square_size)` returns `true` when `(px, py)` falls within the restart button drawn by `DrawGameOverOverlay`.  The button is computed relative to the board layout constants so it scales correctly if `square_size` changes.  With the standard layout (`board_x=320`, `board_y=40`, `square_size=80`) the button occupies pixel rows 360–419 and pixel columns 500–779.
+
+`DrawTurnIndicator(rs, side_to_move, board_x, board_y, square_size)` renders a "WHITE TO MOVE" or "BLACK TO MOVE" label in the gap below the board.  The label is centred horizontally over the board width in a dark background strip.  It is called only when the game is ongoing; the game-over overlay takes its place when a result has been decided.  The strip is positioned symmetrically: its vertical centre sits at `board_y + 8*square_size + board_y/2` (matching the top gap above the board).
 
 The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 

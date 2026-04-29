@@ -57,6 +57,8 @@ static const Glyph5x7* GetGlyph(uint8 ch)
     static const Glyph5x7 k_R = {{ 30, 17, 17, 30, 20, 18, 17 }};
     static const Glyph5x7 k_S = {{ 14, 16, 16, 14,  1,  1, 14 }};
     static const Glyph5x7 k_T = {{ 31,  4,  4,  4,  4,  4,  4 }};
+    static const Glyph5x7 k_O = {{ 14, 17, 17, 17, 17, 17, 14 }};
+    static const Glyph5x7 k_V = {{ 17, 17, 17, 17, 10, 10,  4 }};
     static const Glyph5x7 k_W = {{ 17, 17, 17, 21, 21, 27, 17 }};
 
     switch (ch)
@@ -74,9 +76,11 @@ static const Glyph5x7* GetGlyph(uint8 ch)
         case 'L':  return &k_L;
         case 'M':  return &k_M;
         case 'N':  return &k_N;
+        case 'O':  return &k_O;
         case 'R':  return &k_R;
         case 'S':  return &k_S;
         case 'T':  return &k_T;
+        case 'V':  return &k_V;
         case 'W':  return &k_W;
         default:   return &k_Blank;
     }
@@ -674,4 +678,38 @@ bool IsRestartButtonHit(int32 px, int32 py,
     int32 bx, by, bw, bh;
     GetRestartButtonRect(board_x, board_y, square_size, &bx, &by, &bw, &bh);
     return px >= bx && px < bx + bw && py >= by && py < by + bh;
+}
+
+// ---------------------------------------------------------------------------
+// Turn indicator
+// ---------------------------------------------------------------------------
+
+void DrawTurnIndicator(RendererState* rs, Color side_to_move,
+                       int32 board_x, int32 board_y, int32 square_size)
+{
+    ASSERT(rs);
+
+    const uint8* msg = (side_to_move == COLOR_WHITE)
+                       ? (const uint8*)"WHITE TO MOVE"
+                       : (const uint8*)"BLACK TO MOVE";
+
+    int32 text_scale = 2;
+    int32 char_step  = (5 + 1) * text_scale;  // 12 px per character
+    int32 glyph_h    = 7 * text_scale;         // 14 px
+    int32 pad        = text_scale * 2;         // 4 px vertical padding
+
+    int32 text_len = 0;
+    for (const uint8* p = msg; *p; ++p) ++text_len;
+    int32 text_w = text_len * char_step - text_scale;
+
+    int32 board_px = 8 * square_size;
+    int32 bar_h    = glyph_h + pad * 2;
+    // Centre the bar in the gap below the board.  The gap equals board_y for
+    // the symmetric 1280x720 layout (board_y pixels above and below).
+    int32 bar_y    = board_y + board_px + (board_y - bar_h) / 2;
+    int32 text_x   = board_x + (board_px - text_w) / 2;
+    int32 text_y   = bar_y + pad;
+
+    DrawRect(rs, board_x, bar_y, board_px, bar_h, STATUS_BANNER_BG);
+    DrawStatusText(rs, msg, text_x, text_y, text_scale, STATUS_TEXT_COLOR);
 }
