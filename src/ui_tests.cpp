@@ -235,11 +235,14 @@ static bool TestUI_CheckHighlight_BlackKingIsRed(void)
 }
 
 // After Fool's Mate (GAME_BLACK_WINS), DrawStatusOverlay must paint the banner
-// background over the board centre.  The banner spans board_x to board_x+640
-// and is vertically centred on the board.
+// background over the board centre and render the "CHECKMATE - BLACK WINS" text.
 // With board_x=0, board_y=0, square_size=80:
-//   board_px = 640, banner_h = 33, banner_y = (640-33)/2 = 303.
-//   Sample (50, 315) is inside the banner, left of the text (text_x >= 123).
+//   board_px = 640, banner_h = 33, banner_y = (640-33)/2 = 303, text_y = 309.
+//   "CHECKMATE - BLACK WINS" (22 chars): text_w = 393, text_x = 123.
+//   Sample (50, 315) is inside the banner, left of any text.
+//   Char 12 ('B') starts at x = 123 + 12*18 = 339.
+//   Row 0 of k_B = 30 = 0b11110, col 1 set → text pixel at (342, 309).
+//   Row 0 of k_W = 17 = 0b10001, col 1 NOT set → unique discriminator vs WHITE WINS.
 static bool TestUI_CheckmateOverlay_BannerVisible(void)
 {
     ArenaReset(&s_Memory->test_scratch);
@@ -262,10 +265,17 @@ static bool TestUI_CheckmateOverlay_BannerVisible(void)
 
     DrawStatusOverlay(&rs, &gs, 0, 0, 80);
 
-    // Sample (50, 315): inside the banner background, left of any text.
-    Pixel sample   = rs.pixels[(int32)315 * rs.width + (int32)50];
-    Pixel expected = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
-    if (!PixelEq(sample, expected)) return false;
+    // 1. Banner background at (50, 315): left of any text.
+    Pixel banner_px = rs.pixels[(int32)315 * rs.width + (int32)50];
+    Pixel banner_bg = { 20, 20, 20, 0 }; // STATUS_BANNER_BG (BGRA)
+    if (!PixelEq(banner_px, banner_bg)) return false;
+
+    // 2. Text pixel from glyph 'B' (char 12 of "CHECKMATE - BLACK WINS"):
+    //    Row 0 of k_B = 0b11110, col 1 set. Row 0 of k_W = 0b10001, col 1 NOT set.
+    //    x = 123 + 12*18 + 1*3 = 342,  y = text_y + 0*3 = 309.
+    Pixel text_px    = rs.pixels[(int32)309 * rs.width + (int32)342];
+    Pixel text_color = { 220, 220, 220, 0 }; // STATUS_TEXT_COLOR (BGRA)
+    if (!PixelEq(text_px, text_color)) return false;
 
     return true;
 }
