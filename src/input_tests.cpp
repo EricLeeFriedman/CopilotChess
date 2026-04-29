@@ -676,6 +676,150 @@ static bool TestInput_PromotionClick_CancelsOnOutsideRange_Black(void)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// InputRestart tests
+// ---------------------------------------------------------------------------
+
+// Restart from idle — verify all GameState fields are reset to starting values.
+static bool TestInput_Restart_ResetsGameState(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    // Dirty the game state by applying a move (1. e4), which changes
+    // side_to_move and sets an en-passant target.
+    Move m = {};
+    m.from_rank = 1; m.from_file = 4;
+    m.to_rank   = 3; m.to_file   = 4;
+    ApplyMove(&gs, &m);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputRestart(&input, &gs);
+
+    // side_to_move must be WHITE.
+    if (gs.side_to_move != COLOR_WHITE)       return false;
+
+    // En-passant must be cleared.
+    if (gs.en_passant_rank != -1)             return false;
+    if (gs.en_passant_file != -1)             return false;
+
+    // All castling rights must be restored.
+    if (!gs.castling_white_kingside)          return false;
+    if (!gs.castling_white_queenside)         return false;
+    if (!gs.castling_black_kingside)          return false;
+    if (!gs.castling_black_queenside)         return false;
+
+    // White pawns must be back on rank 1.
+    for (int32 f = 0; f < 8; ++f)
+    {
+        if (gs.board.squares[1][f].piece != PIECE_PAWN)    return false;
+        if (gs.board.squares[1][f].color != COLOR_WHITE)   return false;
+    }
+
+    // Black pawns must be on rank 6.
+    for (int32 f = 0; f < 8; ++f)
+    {
+        if (gs.board.squares[6][f].piece != PIECE_PAWN)    return false;
+        if (gs.board.squares[6][f].color != COLOR_BLACK)   return false;
+    }
+
+    // Rank 3 must be empty (the moved pawn was returned to e2 by InitGameState).
+    for (int32 f = 0; f < 8; ++f)
+        if (gs.board.squares[3][f].piece != PIECE_NONE)    return false;
+
+    return true;
+}
+
+// Restart must clear all input sub-state.
+static bool TestInput_Restart_ClearsInputState(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    InputRestart(&input, &gs);
+
+    if (input.dragging)          return false;
+    if (input.pending_promotion) return false;
+    if (input.drag_from_rank != -1) return false;
+    if (input.drag_from_file != -1) return false;
+    if (input.drag_cursor_x  != 0)  return false;
+    if (input.drag_cursor_y  != 0)  return false;
+    if (input.legal_moves.count != 0) return false;
+    if (input.promo_from_rank != -1) return false;
+    if (input.promo_from_file != -1) return false;
+    if (input.promo_to_rank   != -1) return false;
+    if (input.promo_to_file   != -1) return false;
+
+    return true;
+}
+
+// Restart while an active drag is in progress must not corrupt state.
+static bool TestInput_Restart_SafeDuringActiveDrag(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    // Start a drag of the White e-pawn.
+    // e2 center: sq_x=320+4*80=640, sq_y=40+(7-1)*80=520; center=(680,560)
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80);
+    if (!input.dragging) return false;
+
+    InputRestart(&input, &gs);
+
+    // After restart, drag must be cleared and game in starting state.
+    if (input.dragging)               return false;
+    if (input.pending_promotion)      return false;
+    if (gs.side_to_move != COLOR_WHITE) return false;
+
+    // The next drag start must work as if starting fresh.
+    InputHandleDragStart(&input, &gs, 680, 560, 320, 40, 80);
+    if (!input.dragging) return false;
+
+    return true;
+}
+
+// Restart while a pending promotion is active must not corrupt state.
+static bool TestInput_Restart_SafeDuringPendingPromotion(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+
+    GameState gs = {};
+    SetupPromoPosition(&gs);
+
+    InputState input = {};
+    InputInit(&input);
+
+    // Drag e7 pawn to e8 to enter pending promotion.
+    InputHandleDragStart(&input, &gs, 680, 160, 320, 40, 80);
+    InputHandleDragEnd  (&input, &gs, 680,  80, 320, 40, 80);
+    if (!input.pending_promotion) return false;
+
+    InputRestart(&input, &gs);
+
+    if (input.pending_promotion)        return false;
+    if (input.dragging)                 return false;
+    if (gs.side_to_move != COLOR_WHITE) return false;
+    // Board must be in the standard starting position.
+    if (gs.board.squares[6][4].piece != PIECE_PAWN) return false;  // e7 pawn restored
+    if (gs.board.squares[7][4].piece != PIECE_NONE) return false;  // e8 empty again
+
+    return true;
+}
+
 
 static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_PixelToSquare_A1_Corner),
@@ -707,6 +851,10 @@ static const TestEntry k_InputTests[] = {
     TEST_ENTRY(TestInput_PromotionClick_AppliesQueen_Black),
     TEST_ENTRY(TestInput_PromotionClick_AppliesKnight_Black),
     TEST_ENTRY(TestInput_PromotionClick_CancelsOnOutsideRange_Black),
+    TEST_ENTRY(TestInput_Restart_ResetsGameState),
+    TEST_ENTRY(TestInput_Restart_ClearsInputState),
+    TEST_ENTRY(TestInput_Restart_SafeDuringActiveDrag),
+    TEST_ENTRY(TestInput_Restart_SafeDuringPendingPromotion),
 };
 
 void RunInputTests(AppMemory* memory, int32* passed, int32* total)

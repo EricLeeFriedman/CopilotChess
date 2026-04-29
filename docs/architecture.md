@@ -81,6 +81,17 @@ Indexing convention: `squares[rank][file]` where rank 0 is White's back rank (ra
 
 `InitBoard(Board*)` sets up the standard starting position. The caller is responsible for pushing a `Board` from the `game_state` arena before calling it.
 
+#### Game Restart Flow
+
+`InputRestart(InputState* input, GameState* gs)` (declared in `src/input.h`, implemented in `src/input.cpp`) is the single entry point for resetting a finished or in-progress game:
+
+1. `InputCancelDrag(input)` — clears any active drag or pending promotion before touching game state, so no stale cursor or move-list data survives the reset.
+2. `InitGameState(gs)` — resets the board to the standard starting position, sets `side_to_move` to `COLOR_WHITE`, clears en-passant targets, and restores all four castling rights.
+
+`InputRestart` is safe to call at any point, including during an active drag or while a promotion picker is visible.  The caller (`src/main.cpp`) additionally resets the `game_state` and `input` arena offsets to zero via `ArenaReset` before calling `InputRestart`; no re-allocation is needed because both `g_GameState` and `g_InputState` were pushed from offset 0 of their respective arenas at startup and remain valid after the reset.
+
+The platform layer (`src/main.cpp`) tracks the current result in `g_GameResult` (a `GameResult` value evaluated every render frame via `EvaluatePosition`).  When `g_GameResult != GAME_ONGOING`, `WM_LBUTTONDOWN` is rerouted exclusively to the restart-button hit test; normal drag and promotion handling are suppressed until the restart occurs.
+
 ### Chess Rules
 
 Own legal move generation, check detection, checkmate detection, and any supporting rule validation.
@@ -277,6 +288,14 @@ The UI is implemented in `src/ui.h` and `src/ui.cpp`.
 `DrawPieceAt(rs, type, color, center_x, center_y, sq_size)` renders a single piece centered at an arbitrary pixel position.  Called by the render loop to draw the floating piece under the cursor during a drag.
 
 `DrawPromotionPicker(rs, board_x, board_y, square_size, to_rank, to_file, promoting_side)` overlays four golden-highlighted squares at the promotion file (Queen, Rook, Bishop, Knight in slot order) so the player can click to choose a promotion piece.
+
+`DrawGameOverOverlay(rs, result, board_x, board_y, square_size)` draws a centered panel on top of the board when the game has ended.  The panel consists of:
+
+- A dark background rectangle with a light-gray border.
+- A result strip (top 60 px of the panel) coloured near-white for a White win, dark gray for a Black win, or mid-gray for a draw, with a king-piece icon identifying the winning side (both kings shown for a draw).
+- A green restart button (lower portion of the panel) with a ring icon.  Its pixel bounds are the same values returned by `IsRestartButtonHit`.
+
+`IsRestartButtonHit(px, py, board_x, board_y, square_size)` returns `true` when `(px, py)` falls within the restart button drawn by `DrawGameOverOverlay`.  The button is computed relative to the board layout constants so it scales correctly if `square_size` changes.  With the standard layout (`board_x=320`, `board_y=40`, `square_size=80`) the button occupies pixel rows 360–419 and pixel columns 500–779.
 
 The board is centered in the 1280×720 window at render time (`board_x = 320`, `board_y = 40`, `square_size = 80`). The window is created with `AdjustWindowRect` so that the client area is exactly 1280×720 regardless of title-bar height.
 

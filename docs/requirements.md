@@ -33,6 +33,11 @@ These invariants are authoritative for both implementation and review. When in d
   - When a pawn is dropped on the last rank a promotion picker overlay appears at the promotion file showing Queen, Rook, Bishop, and Knight (in that order away from the promotion rank).
   - Clicking one of the four picker squares applies the promotion with the chosen piece.
   - Clicking outside the picker, or right-clicking, cancels the promotion and leaves the board unchanged.
+- Game restart:
+  - After checkmate or stalemate the game-over overlay is displayed over the board showing a result indicator and a green restart button.
+  - Restarting is triggered exclusively by **clicking the restart button** with the left mouse button — no keyboard shortcut exists.
+  - Clicking anywhere other than the restart button while the game-over overlay is visible has no effect.
+  - Restart resets the board to the standard starting position, sets White to move, clears the en-passant target, restores all castling rights, and clears any active drag or pending-promotion state.
 
 ## Build And Source Control
 

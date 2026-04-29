@@ -113,10 +113,63 @@ static bool TestUI_DrawBoard_LegalMoveDotOnTargetOnly(void)
     return true;
 }
 
+// DrawGameOverOverlay must not crash for any valid GameResult.
+static bool TestUI_DrawGameOverOverlay_NoCrash(void)
+{
+    ArenaReset(&s_Memory->test_scratch);
+    RendererState rs = {};
+    // Use the full 1280x720 layout so coordinates don't clip badly.
+    if (!MakeRenderer(1280, 720, &rs)) return false;
+
+    GameState gs = {};
+    InitGameState(&gs);
+
+    DrawBoard(&rs, &gs, 320, 40, 80, -1, -1, nullptr);
+    DrawGameOverOverlay(&rs, GAME_WHITE_WINS, 320, 40, 80);
+    DrawGameOverOverlay(&rs, GAME_BLACK_WINS, 320, 40, 80);
+    DrawGameOverOverlay(&rs, GAME_DRAW,       320, 40, 80);
+    return true;
+}
+
+// A pixel inside the restart button must register as a hit.
+// With board_x=320, board_y=40, square_size=80:
+//   board_px = 640; overlay_w=320; overlay_h=160
+//   ox = 320 + (640-320)/2 = 480; oy = 40 + (640-160)/2 = 280
+//   btn_x = 480+20=500; btn_y = 280+60+20=360; btn_w=280; btn_h=60
+//   Centre of button: (500+140, 360+30) = (640, 390)
+static bool TestUI_IsRestartButtonHit_InsideButton(void)
+{
+    // Centre of the restart button.
+    if (!IsRestartButtonHit(640, 390, 320, 40, 80)) return false;
+    // Top-left corner (inclusive).
+    if (!IsRestartButtonHit(500, 360, 320, 40, 80)) return false;
+    // Bottom-right corner (last valid pixel: btn_x+btn_w-1, btn_y+btn_h-1).
+    if (!IsRestartButtonHit(779, 419, 320, 40, 80)) return false;
+    return true;
+}
+
+// A pixel outside the restart button must not register as a hit.
+static bool TestUI_IsRestartButtonHit_OutsideButton(void)
+{
+    // One pixel above the button.
+    if (IsRestartButtonHit(640, 359, 320, 40, 80)) return false;
+    // One pixel below the button.
+    if (IsRestartButtonHit(640, 420, 320, 40, 80)) return false;
+    // One pixel to the left.
+    if (IsRestartButtonHit(499, 390, 320, 40, 80)) return false;
+    // One pixel to the right.
+    if (IsRestartButtonHit(780, 390, 320, 40, 80)) return false;
+    return true;
+}
+
+
 static const TestEntry k_UITests[] = {
     TEST_ENTRY(TestUI_DrawBoard_NoCrash),
     TEST_ENTRY(TestUI_DrawBoard_SelectedSquareIsHighlighted),
     TEST_ENTRY(TestUI_DrawBoard_LegalMoveDotOnTargetOnly),
+    TEST_ENTRY(TestUI_DrawGameOverOverlay_NoCrash),
+    TEST_ENTRY(TestUI_IsRestartButtonHit_InsideButton),
+    TEST_ENTRY(TestUI_IsRestartButtonHit_OutsideButton),
 };
 
 void RunUITests(AppMemory* memory, int32* passed, int32* total)
