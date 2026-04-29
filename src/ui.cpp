@@ -522,3 +522,156 @@ void DrawPromotionPicker(RendererState*   rs,
         DrawPiece(rs, sq_x, sq_y, square_size, k_PickerPieces[i], promoting_side);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Game-over overlay
+// ---------------------------------------------------------------------------
+
+// Layout of the game-over panel, expressed as fractions of the 8-square board.
+// The panel is centered inside the board area.
+static const int32 OVERLAY_W  = 320;  // panel width  (4 squares)
+static const int32 OVERLAY_H  = 160;  // panel height (2 squares)
+static const int32 RESULT_H   =  60;  // result-strip height inside the panel
+static const int32 BTN_MARGIN =  20;  // inset of the restart button from the panel edges
+static const int32 BTN_H      =  60;  // restart button height
+
+// Panel colours.
+static const Pixel OVERLAY_BG       = {  20,  20,  20, 0 };  // near-black background
+static const Pixel OVERLAY_BORDER   = { 180, 180, 180, 0 };  // light-gray border
+
+static const Pixel RESULT_WHITE_COL = { 220, 235, 235, 0 };  // near-white  — White wins
+static const Pixel RESULT_BLACK_COL = {  50,  50,  50, 0 };  // dark gray   — Black wins
+static const Pixel RESULT_DRAW_COL  = { 120, 120, 120, 0 };  // mid-gray    — draw
+
+static const Pixel BTN_FILL         = {  50, 180,  50, 0 };  // green restart button
+static const Pixel BTN_BORDER_COLOR = { 200, 240, 200, 0 };  // light-green button border
+
+// Derive the top-left pixel of the overlay panel, centered on the board.
+static inline void GetOverlayTopLeft(int32 board_x, int32 board_y, int32 square_size,
+                                     int32* ox, int32* oy)
+{
+    int32 board_px = square_size * 8;
+    *ox = board_x + (board_px - OVERLAY_W) / 2;
+    *oy = board_y + (board_px - OVERLAY_H) / 2;
+}
+
+// Derive the pixel rect of the restart button.
+static inline void GetRestartButtonRect(int32 board_x, int32 board_y, int32 square_size,
+                                        int32* bx, int32* by, int32* bw, int32* bh)
+{
+    int32 ox, oy;
+    GetOverlayTopLeft(board_x, board_y, square_size, &ox, &oy);
+    *bx = ox + BTN_MARGIN;
+    *by = oy + RESULT_H + BTN_MARGIN;
+    *bw = OVERLAY_W - BTN_MARGIN * 2;
+    *bh = BTN_H;
+}
+
+void DrawGameOverOverlay(RendererState*   rs,
+                         GameResult       result,
+                         int32            board_x,
+                         int32            board_y,
+                         int32            square_size)
+{
+    ASSERT(rs);
+
+    int32 ox, oy;
+    GetOverlayTopLeft(board_x, board_y, square_size, &ox, &oy);
+
+    // Outer border then dark background.
+    DrawRect(rs, ox - 2, oy - 2, OVERLAY_W + 4, OVERLAY_H + 4, OVERLAY_BORDER);
+    DrawRect(rs, ox, oy, OVERLAY_W, OVERLAY_H, OVERLAY_BG);
+
+    // Result strip: colour indicates who won.
+    Pixel result_color;
+    Color winner_color;
+    switch (result)
+    {
+        case GAME_WHITE_WINS:
+            result_color = RESULT_WHITE_COL;
+            winner_color = COLOR_WHITE;
+            break;
+        case GAME_BLACK_WINS:
+            result_color = RESULT_BLACK_COL;
+            winner_color = COLOR_BLACK;
+            break;
+        default: // GAME_DRAW
+            result_color = RESULT_DRAW_COL;
+            winner_color = COLOR_NONE;
+            break;
+    }
+    DrawRect(rs, ox, oy, OVERLAY_W, RESULT_H, result_color);
+
+    // Draw a king icon centred in the result strip to hint at the winner.
+    // For a draw, draw both kings on the left and right sides of the strip.
+    int32 icon_size = RESULT_H;
+
+    if (winner_color != COLOR_NONE)
+    {
+        int32 sq_x = ox + (OVERLAY_W - icon_size) / 2;
+        DrawPiece(rs, sq_x, oy, icon_size, PIECE_KING, winner_color);
+    }
+    else
+    {
+        DrawPiece(rs, ox,                           oy, icon_size, PIECE_KING, COLOR_WHITE);
+        DrawPiece(rs, ox + OVERLAY_W - icon_size,   oy, icon_size, PIECE_KING, COLOR_BLACK);
+    }
+
+    // Render the result message text inside the result strip at scale 2.
+    // Text color contrasts with the strip: dark on a light strip, light on dark/mid.
+    {
+        const uint8* msg;
+        Pixel msg_color;
+        if (result == GAME_WHITE_WINS)
+        {
+            msg       = (const uint8*)"CHECKMATE - WHITE WINS";
+            msg_color = OVERLAY_BG;
+        }
+        else if (result == GAME_BLACK_WINS)
+        {
+            msg       = (const uint8*)"CHECKMATE - BLACK WINS";
+            msg_color = STATUS_TEXT_COLOR;
+        }
+        else
+        {
+            msg       = (const uint8*)"STALEMATE - DRAW";
+            msg_color = STATUS_TEXT_COLOR;
+        }
+
+        int32 text_scale = 2;
+        int32 char_step  = (5 + 1) * text_scale;  // 12 px per character
+        int32 glyph_h2   = 7 * text_scale;         // 14 px
+
+        int32 msg_len = 0;
+        for (const uint8* p = msg; *p; ++p) ++msg_len;
+        int32 msg_w = msg_len * char_step - text_scale;
+
+        int32 msg_x = ox + (OVERLAY_W - msg_w) / 2;
+        int32 msg_y = oy + (RESULT_H - glyph_h2) / 2;
+
+        DrawStatusText(rs, msg, msg_x, msg_y, text_scale, msg_color);
+    }
+
+    // Restart button: green rectangle.
+    int32 bx, by, bw, bh;
+    GetRestartButtonRect(board_x, board_y, square_size, &bx, &by, &bw, &bh);
+    DrawRect(rs, bx - 2, by - 2, bw + 4, bh + 4, BTN_BORDER_COLOR);
+    DrawRect(rs, bx, by, bw, bh, BTN_FILL);
+
+    // Draw a ring icon inside the button as a simple "refresh" indicator.
+    int32 btn_cx = bx + bw / 2;
+    int32 btn_cy = by + bh / 2;
+    int32 icon_r = bh * 28 / 100;
+    DrawFilledCircle(rs, btn_cx, btn_cy, icon_r + 3, BTN_BORDER_COLOR);
+    DrawFilledCircle(rs, btn_cx, btn_cy, icon_r,     BTN_FILL);
+    int32 inner_r = icon_r * 55 / 100;
+    DrawFilledCircle(rs, btn_cx, btn_cy, inner_r, BTN_FILL);
+}
+
+bool IsRestartButtonHit(int32 px, int32 py,
+                        int32 board_x, int32 board_y, int32 square_size)
+{
+    int32 bx, by, bw, bh;
+    GetRestartButtonRect(board_x, board_y, square_size, &bx, &by, &bw, &bh);
+    return px >= bx && px < bx + bw && py >= by && py < by + bh;
+}
